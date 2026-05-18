@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.2.0
 name: GenConti2Img
 description: |
   Storyboard(콘티) 이미지를 레퍼런스로 삼아 GPT Image 2 / Nano Banana Pro / Cinematic Studio 2.5로
@@ -15,6 +15,8 @@ allowed-tools: Bash, Read
 # GenConti2Img
 
 콘티(storyboard) → 최종 씬 이미지 배치 생성 스킬.
+
+캐시가 있으면 콘티 Vision 분석을 스킵하고, 없으면 분석 후 캐시에 저장한다.
 
 ## 폴더 구조 규칙
 
@@ -46,6 +48,22 @@ allowed-tools: Bash, Read
 | `cinema` | `cinematic_studio_2_5` | 시네마틱 스타일 |
 
 인자 없으면 `gpt` 사용.
+
+## Step 0 — 캐시 확인
+
+```bash
+ls /Users/grace/Desktop/GRB/.grb_cache.json 2>/dev/null | head -1
+```
+
+파일이 있으면:
+```bash
+cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py check-cache {SEQ_ID} all --workflow genconti2img
+```
+
+출력 JSON의 `needs_analysis` = 분석 필요한 샷.
+출력 JSON의 `cached` = 캐시 히트 샷 (Step 4~6 스킵, 바로 Step 7 API 호출로).
+
+파일 없으면: 전체 샷을 `needs_analysis`로 간주, Step 1부터 정상 진행.
 
 ## Step 1 — config.md 읽기
 
@@ -131,50 +149,50 @@ shotlist에서 추출한 캐릭터마다 glob으로 탐색. 없으면 경고만 
 - **카메라 앵글** (eye-level / low angle / high angle / OTS 등)
 - **표정/감정** (shocked, laughing, playful, commanding 등)
 
-## Step 7 — 이미지 생성
+## Step 6b — 캐시 저장 (분석한 샷만)
 
-각 shot마다 생성. 출력 파일명: `{EP}/Image/{SEQ_ID}/{SHOT}_v{N}.png`
-(이미 존재하면 버전 숫자 증가: v1 → v2 → v3)
+`needs_analysis` 샷 각각에 대해 Vision 분석 + 프롬프트 구성이 끝나면 캐시에 저장:
 
-`--image` 순서: 배경 → 콘티 → 캐릭터 시트(등장 인물 전원)
-
-### gpt (기본):
 ```bash
-higgsfield generate create gpt_image_2 \
-  --prompt "{프롬프트}" \
-  --image "{EP}/Image/{SEQ_ID}/Background.png" \
-  --image "{EP}/Conti/{SEQ_ID}/{SHOT}_v{N}.png" \
-  --image "{EP}/character/{char1}_Character*.png" \
-  --image "{EP}/character/{char2}_Character*.png" \
-  --aspect_ratio 16:9 \
-  --quality high \
-  --resolution 2k \
-  --wait --wait-timeout 10m
+echo '{
+  "shot": "0010",
+  "prompt": "완성된 최종 프롬프트 전체",
+  "vision_text": "샷 사이즈 / 앵글 / 표정 분석 요약",
+  "image_files": [],
+  "image_sigs": [],
+  "image_mode": "single",
+  "multi_shot": false,
+  "workflow": "genconti2img",
+  "conti_image": "EP01/Conti/S41/0010_v1.png",
+  "background_file": "EP01/Image/S41/Background.png",
+  "characters": ["해수", "의현"]
+}' | python3 /Users/grace/Desktop/GRB/grb_runner.py write-shot {SEQ_ID}
 ```
 
-### nano:
+`characters`는 shotlist에서 추출한 해당 샷 인물 목록. 없으면 `[]`.
+
+출력: `CACHE_WRITE:0010:ok`
+
+## Step 7 — 이미지 생성 (Python 러너 위임)
+
+캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
+
 ```bash
-higgsfield generate create nano_banana_2 \
-  --prompt "{프롬프트}" \
-  --image "{EP}/Image/{SEQ_ID}/Background.png" \
-  --image "{EP}/Conti/{SEQ_ID}/{SHOT}_v{N}.png" \
-  --image "{EP}/character/{char1}_Character*.png" \
-  --aspect_ratio 16:9 \
-  --resolution 2k \
-  --wait --wait-timeout 10m
+cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py \
+  genconti2img {SEQ_ID} all --model {model}
 ```
 
-### cinema:
-```bash
-higgsfield generate create cinematic_studio_2_5 \
-  --prompt "{프롬프트}" \
-  --image "{EP}/Image/{SEQ_ID}/Background.png" \
-  --image "{EP}/Conti/{SEQ_ID}/{SHOT}_v{N}.png" \
-  --image "{EP}/character/{char1}_Character*.png" \
-  --aspect_ratio 16:9 \
-  --resolution 2k \
-  --wait --wait-timeout 10m
-```
+모델 인자: `--model gpt` (기본) / `--model nano` / `--model cinema`
+
+**stdout 파싱 규칙:**
+
+| 출력 | 표시 |
+|---|---|
+| `SHOT_START:0010` | `[1/N] Shot 0010 생성 중...` |
+| `SHOT_DONE:0010:{url}` | `✅ Shot 0010 → EP01/Image/S41/0010_v1.png\n[0010_v1.png]({url})\n{url}` |
+| `SHOT_SKIP:0010:{url}` | `⏳ Shot 0010: 이미 완료됨` |
+| `SHOT_FAIL:0010:{err}` | `❌ Shot 0010: {err}` |
+| `BATCH_DONE:{s}:{f}:{k}` | `✅ {s}개 이미지 생성 완료` |
 
 ## 프롬프트 작성 규칙
 

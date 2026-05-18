@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.2.0
 name: GenVideo
 description: |
   Image-to-video generation. Single shot or batch (range/all).
@@ -18,7 +18,27 @@ Image-to-video generation skill. Handles single shot or batch. Default model: Kl
 
 **Final prompt = Projectprompt + Sceneprompt + Shotprompt (번역, 있을 때만) + 이미지 시각 분석**
 
-> **중요:** 모든 프롬프트 파일은 스킬 실행 시 **반드시 Read 툴로 새로 읽어야 합니다.**
+캐시가 있으면 분석을 스킵하고, 없으면 기존 분석 후 캐시에 저장한다.
+
+## Step 0 — 캐시 확인
+
+인자 파싱 전에 먼저 캐시 상태를 확인한다.
+
+```bash
+ls /Users/grace/Desktop/GRB/.grb_cache.json 2>/dev/null | head -1
+```
+
+파일이 있으면:
+```bash
+cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py check-cache {SEQ_ID} {SHOT_SPEC} --workflow genvideo
+```
+
+출력 JSON의 `needs_analysis` 배열 = 분석이 필요한 샷 목록.
+출력 JSON의 `cached` 배열 = 캐시 히트 샷 (Step 3~7 스킵).
+
+파일이 없으면: `needs_analysis = 전체 샷`, `cached = []` 로 간주하고 Step 1부터 진행.
+
+> **Step 3~7은 `needs_analysis` 샷에만 실행.** `cached` 샷은 바로 Step 8로.
 
 ## Step 1 — config.md 읽기 (Required)
 
@@ -179,74 +199,56 @@ Read 툴로 이미지 분석:
 {image-specific motion and scene description}
 ```
 
-## Step 8 — 영상 생성
+## Step 7d — 캐시 저장 (분석한 샷만)
 
-모든 경로는 절대경로. `pwd`로 현재 디렉토리 확인.
+`needs_analysis` 샷 각각에 대해 분석이 끝나면 캐시에 저장한다.
 
-### Kling 3.0 — Pair:
+각 샷마다 아래 JSON을 구성하고 `write-shot`에 파이프로 전달:
+
 ```bash
-higgsfield generate create kling3_0 \
-  --start-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}-1.png" \
-  --end-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}-2.png" \
-  --prompt "..." \
-  --mode pro \
-  --aspect_ratio 16:9 \
-  --duration 5 \
-  --wait --wait-timeout 20m
+echo '{
+  "shot": "0010",
+  "prompt": "완성된 최종 프롬프트 전체",
+  "vision_text": "이미지 분석 요약",
+  "image_files": ["EP01/Image/S41/0010_v1.png"],
+  "image_sigs": [],
+  "image_mode": "single",
+  "multi_shot": false,
+  "workflow": "genvideo"
+}' | python3 /Users/grace/Desktop/GRB/grb_runner.py write-shot {SEQ_ID}
 ```
 
-### Kling 3.0 — Single:
+`image_sigs`는 비워두면 Python이 자동으로 파일에서 읽는다.
+Pair 모드면 `image_files`에 두 파일 모두, `image_mode`는 `"pair"`.
+`MULTI_SHOT=true`면 `"multi_shot": true`.
+
+출력: `CACHE_WRITE:0010:ok`
+
+## Step 8 — 영상 생성 (Python 러너 위임)
+
+캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
+
 ```bash
-higgsfield generate create kling3_0 \
-  --start-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}_v{N}.png" \
-  --prompt "..." \
-  --mode pro \
-  --aspect_ratio 16:9 \
-  --duration 5 \
-  --wait --wait-timeout 20m
+cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py \
+  genvideo {SEQ_ID} {SHOT_SPEC} --model {model}
 ```
 
-### Kling 3.0 — Single + Multi-shot (`MULTI_SHOT=true`):
-```bash
-higgsfield generate create kling3_0 \
-  --start-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}_v{N}.png" \
-  --prompt "..." \
-  --mode pro \
-  --aspect_ratio 16:9 \
-  --duration 5 \
-  --multi_shots true \
-  --multi_shot_mode auto \
-  --wait --wait-timeout 20m
-```
+모델 인자: `--model kling3_0` (기본) 또는 `--model seedance_2_0`
 
-### Seedance 2.0 — Pair:
-```bash
-higgsfield generate create seedance_2_0 \
-  --start-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}-1.png" \
-  --end-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}-2.png" \
-  --prompt "..." \
-  --aspect_ratio 16:9 \
-  --duration 5 \
-  --wait --wait-timeout 20m
-```
+**stdout 파싱 규칙:**
 
-### Seedance 2.0 — Single:
-```bash
-higgsfield generate create seedance_2_0 \
-  --start-image "/abs/path/{EP}/Image/{SEQ}/{SHOT}_v{N}.png" \
-  --prompt "..." \
-  --aspect_ratio 16:9 \
-  --duration 5 \
-  --wait --wait-timeout 20m
-```
+| 출력 | 표시 |
+|---|---|
+| `SHOT_START:0010` | `[진행 중] Shot 0010...` |
+| `SHOT_DONE:0010:{url}` | `✅ Shot 0010\n[0010_v1.mp4]({url})\n{url}` |
+| `SHOT_SKIP:0010:{url}` | `⏳ Shot 0010: 이미 완료됨` |
+| `SHOT_FAIL:0010:{err}` | `❌ Shot 0010: {err}` |
+| `BATCH_DONE:{s}:{f}:{k}` | 최종 요약 출력 |
 
-Note: Seedance 2.0은 `--mode` 없음.
-
-생성 완료 후 즉시:
+완료 후 `open "{url}"` 호출로 브라우저 미리보기:
 ```bash
-open "{URL}"
+open "{마지막_완료_URL}"
 ```
-macOS 기본 브라우저에서 영상 미리보기. 우클릭 → 다른 이름으로 저장.
 
 ## Step 9 — 결과 보고
 
