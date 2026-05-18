@@ -22,15 +22,21 @@ Image-to-video generation skill. Handles single shot or batch. Default model: Kl
 
 ## Step 0 — 캐시 확인
 
-인자 파싱 전에 먼저 캐시 상태를 확인한다.
+인자 파싱 전에 먼저 프로젝트 루트를 감지하고 캐시 상태를 확인한다.
 
 ```bash
-ls /Users/grace/Desktop/GRB/.grb_cache.json 2>/dev/null | head -1
+GRB_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
+RUNNER="$GRB_ROOT/grb_runner.py"
+CACHE="$GRB_ROOT/.grb_cache.json"
+```
+
+```bash
+ls "$CACHE" 2>/dev/null | head -1
 ```
 
 파일이 있으면:
 ```bash
-cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py check-cache {SEQ_ID} {SHOT_SPEC} --workflow genvideo
+python3 "$RUNNER" check-cache {SEQ_ID} {SHOT_SPEC} --workflow genvideo
 ```
 
 출력 JSON의 `needs_analysis` 배열 = 분석이 필요한 샷 목록.
@@ -215,7 +221,7 @@ echo '{
   "image_mode": "single",
   "multi_shot": false,
   "workflow": "genvideo"
-}' | python3 /Users/grace/Desktop/GRB/grb_runner.py write-shot {SEQ_ID}
+}' | python3 "$RUNNER" write-shot {SEQ_ID}
 ```
 
 `image_sigs`는 비워두면 Python이 자동으로 파일에서 읽는다.
@@ -229,7 +235,7 @@ Pair 모드면 `image_files`에 두 파일 모두, `image_mode`는 `"pair"`.
 캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
 
 ```bash
-cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py \
+cd "$GRB_ROOT" && python3 "$RUNNER" \
   genvideo {SEQ_ID} {SHOT_SPEC} --model {model}
 ```
 

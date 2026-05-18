@@ -52,12 +52,18 @@ allowed-tools: Bash, Read
 ## Step 0 — 캐시 확인
 
 ```bash
-ls /Users/grace/Desktop/GRB/.grb_cache.json 2>/dev/null | head -1
+GRB_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
+RUNNER="$GRB_ROOT/grb_runner.py"
+CACHE="$GRB_ROOT/.grb_cache.json"
+```
+
+```bash
+ls "$CACHE" 2>/dev/null | head -1
 ```
 
 파일이 있으면:
 ```bash
-cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py check-cache {SEQ_ID} all --workflow genconti2img
+python3 "$RUNNER" check-cache {SEQ_ID} all --workflow genconti2img
 ```
 
 출력 JSON의 `needs_analysis` = 분석 필요한 샷.
@@ -166,7 +172,7 @@ echo '{
   "conti_image": "EP01/Conti/S41/0010_v1.png",
   "background_file": "EP01/Image/S41/Background.png",
   "characters": ["해수", "의현"]
-}' | python3 /Users/grace/Desktop/GRB/grb_runner.py write-shot {SEQ_ID}
+}' | python3 "$RUNNER" write-shot {SEQ_ID}
 ```
 
 `characters`는 shotlist에서 추출한 해당 샷 인물 목록. 없으면 `[]`.
@@ -178,7 +184,7 @@ echo '{
 캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
 
 ```bash
-cd /Users/grace/Desktop/GRB && python3 /Users/grace/Desktop/GRB/grb_runner.py \
+cd "$GRB_ROOT" && python3 "$RUNNER" \
   genconti2img {SEQ_ID} all --model {model}
 ```
 
