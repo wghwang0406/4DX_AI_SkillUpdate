@@ -5,10 +5,10 @@ description: |
   Image-to-video generation. Single shot or batch (range/all).
   Reads config.md for project code and episode mapping.
   Reads {EP}/Image/{SEQ}/Sceneprompt.md + Shotprompt.md, analyzes images with vision, generates video.
-  Pair images (0010-1.png + 0010-2.png) use start-end i2v; single images use start-image only.
-  Default model: Kling 3.0. Pass "seedance" to use Seedance 2.0.
+  Pair mode: pass "10+11" or "0010+0011" as shot spec — start-end i2v using _v*.png files.
+  Single images use start-image only. Default model: Kling 3.0. Pass "seedance" to use Seedance 2.0.
   Use when: "GenVideo", "영상 만들어", "i2v", "GenSingle", "GenBatch", batch or single video generation.
-argument-hint: "<SEQUENCE_ID> <0010 | 0010-0030 | all> [seedance]"
+argument-hint: "<SEQUENCE_ID> <0010 | 10+11 | 0010-0030 | all> [seedance]"
 allowed-tools: Bash, Read
 ---
 
@@ -68,10 +68,14 @@ grep "project_code:" config.md | awk '{print $2}'
 - 첫 번째 인자: SEQUENCE_ID
   - `S41` 그대로 사용 / `41` 입력 시 → `S41`로 변환
 - 두 번째 인자: SHOT_SPEC
-  - `all` → `{EP}/Image/{SEQ}/`에서 전체 샷 탐색
+  - `all` → `{EP}/Image/{SEQ}/`에서 전체 샷 탐색 (싱글 모드만)
   - `0010-0030` → [0010, 0020, 0030] 확장 (10 단위)
   - `0010,0030,0050` → [0010, 0030, 0050]
   - `0010` → 단일 샷
+  - `0010+0011` 또는 `10+11` → **Pair 모드**: `0010_v*.png`(스타트) + `0011_v*.png`(엔드)
+  - `10+11,12,13+17` → 혼합 목록 (페어 + 단독 혼용 가능)
+  - 짧은 번호 자동 패딩: `10+11` → `0010+0011`, `7` → `0007`
+  - 번호가 연속일 필요 없음: `14+17`, `10+50` 모두 가능
 - 마지막 인자 (선택):
   - 없으면 → Kling 3.0 (`kling3_0`)
   - `seedance` → Seedance 2.0 (`seedance_2_0`)
@@ -97,17 +101,11 @@ ls "{EP}/Image/{SEQ}/" 2>/dev/null || echo "NOT FOUND"
 ❌ Scene folder not found: {EP}/Image/{SEQ}/
 ```
 
-`all` 지정 시 샷 목록 탐색:
+`all` 지정 시 샷 목록 탐색 (`_v*.png` 단독 파일만, 싱글 모드):
 ```bash
-# 단일 이미지 탐색
 ls "{EP}/Image/{SEQ}/"[0-9]*_v*.png 2>/dev/null \
   | xargs -I{} basename {} | grep -oE '^[0-9]{4}' | sort -un
-# 페어 이미지 탐색
-ls "{EP}/Image/{SEQ}/"[0-9]*-1.png 2>/dev/null \
-  | xargs -I{} basename {} | grep -oE '^[0-9]{4}' | sort -un
 ```
-
-병합 후 `sort -un`.
 
 ## Step 3 — Projectprompt.md 읽기 (Optional)
 
@@ -140,32 +138,35 @@ Shotprompt.md 형식:
 ```
 0010. 첫 번째 샷 방향
 0020. [multi] 두 번째 샷 방향
-0030-1. 페어 샷 방향
+0030. 페어 샷도 start 번호로 작성 (0030+0031 호출 시 0030. 으로 찾음)
 ```
 
 `[multi]` 태그가 있으면 해당 샷 multi_shots 모드 활성화 (싱글 이미지 전용).
+페어 모드에서 Shotprompt는 **start 번호**(`{SHOT}.`)로 조회한다.
 
 ## Step 6 — 이미지 파일 탐색 (샷별)
 
-각 샷 번호 `{SHOT}` (예: `0010`)에 대해 우선순위 순으로 탐색:
-
-1. `{EP}/Image/{SEQ}/{SHOT}-1.png` + `{SHOT}-2.png` → **Pair mode**
-2. `{EP}/Image/{SEQ}/{SHOT}_v*.png` → **Single mode** (최신 버전)
-3. Else → `⚠️ Shot {SHOT}: 이미지 없음 — 스킵`
+SHOT_SPEC에 `+`가 포함된 경우 → **Pair mode**: START와 END 번호 분리 후 각각 `_v*.png` 탐색.
+그 외 → **Single mode**: `{SHOT}_v*.png` 탐색.
 
 ```bash
-# Pair 체크
-ls "{EP}/Image/{SEQ}/{SHOT}-1.png" "{EP}/Image/{SEQ}/{SHOT}-2.png" 2>/dev/null | wc -l
-# Single (최신 버전)
+# Pair mode (SHOT_SPEC = "0010+0011" → START=0010, END=0011)
+START_IMG=$(ls "{EP}/Image/{SEQ}/{START}_v"*.png 2>/dev/null | sort -V | tail -1)
+END_IMG=$(ls "{EP}/Image/{SEQ}/{END}_v"*.png 2>/dev/null | sort -V | tail -1)
+# 둘 다 있어야 함. 하나라도 없으면 ⚠️ 스킵
+
+# Single mode
 ls "{EP}/Image/{SEQ}/{SHOT}_v"*.png 2>/dev/null | sort -V | tail -1
+# 없으면 ⚠️ 이미지 없음 — 스킵
 ```
 
 ## Step 7 — Shotprompt 조회 + Vision 분석 + 프롬프트 구성
 
 ### 7a. Shotprompt 조회
 
-- **Pair mode**: `{SHOT}-1.` 로 시작하는 줄 찾기
-- **Single mode**: `{SHOT}.` 로 시작하는 줄 찾기
+모드에 관계없이 **`{START}.`** (start 번호 + 점)로 시작하는 줄 찾기.
+- Pair mode(`0010+0011`) → `0010.` 로 시작하는 줄 찾기
+- Single mode(`0010`) → `0010.` 로 시작하는 줄 찾기
 
 찾으면:
 - `[multi]` 태그 → `MULTI_SHOT=true` (Single 전용, Pair는 무시)
@@ -175,7 +176,7 @@ ls "{EP}/Image/{SEQ}/{SHOT}_v"*.png 2>/dev/null | sort -V | tail -1
 ### 7b. Vision 분석
 
 Read 툴로 이미지 분석:
-- **Pair**: `{EP}/Image/{SEQ}/{SHOT}-1.png`, `{SHOT}-2.png` 둘 다
+- **Pair**: start 이미지(`{START}_v*.png`) + end 이미지(`{END}_v*.png`) 둘 다
 - **Single**: `{EP}/Image/{SEQ}/{SHOT}_v{N}.png` (최신 버전)
 
 분석 요소:
@@ -225,7 +226,8 @@ echo '{
 ```
 
 `image_sigs`는 비워두면 Python이 자동으로 파일에서 읽는다.
-Pair 모드면 `image_files`에 두 파일 모두, `image_mode`는 `"pair"`.
+Pair 모드면 `image_files`에 [start_file, end_file] 두 파일 모두, `image_mode`는 `"pair"`.
+`shot` 키는 항상 **start 번호** 사용 (러너가 캐시를 start 번호로 조회).
 `MULTI_SHOT=true`면 `"multi_shot": true`.
 
 출력: `CACHE_WRITE:0010:ok`
@@ -264,8 +266,14 @@ open "{마지막_완료_URL}"
 
 **성공:**
 ```
-✅ Shot {SHOT} [pair/single/single+multi | kling/seedance]
-[{SHOT}_v{N}.mp4]({URL})
+# Single
+✅ Shot 0010 [single | kling]
+[0010_v1.mp4]({URL})
+{URL}
+
+# Pair
+✅ Shot 0010+0011 [pair | kling]
+[0010_v1.mp4]({URL})
 {URL}
 ```
 
