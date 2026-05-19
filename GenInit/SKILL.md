@@ -54,20 +54,27 @@ ls {EP}/character/ 2>/dev/null || echo "PATH_MISSING"
 우선순위: **PDF > 영상 > 콘티이미지**
 
 ```bash
-# PDF
+# PDF (있으면 다른 소스 무시하고 PDF 모드로)
 find . -maxdepth 2 -name "*.pdf" 2>/dev/null
 
 # 영상
 find . -maxdepth 2 \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.MP4" \) 2>/dev/null
 
-# 콘티 이미지 (생성 결과 _v# 제외)
-find . -maxdepth 4 \( -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" \) 2>/dev/null | grep -v "_v[0-9]"
+# 콘티 이미지 — PDF가 없을 때만:
+# 1순위: Conti/{SEQ}/ 폴더 안 기존 이미지 (_v# 제외)
+find "{EP}/Conti/{SEQ}" -maxdepth 1 \( -name "*.png" -o -name "*.PNG" -o -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" \) 2>/dev/null | grep -v "_v[0-9]" | sort -V
+
+# 2순위: 루트 근처 외부 이미지 (Image/, character/ 제외, _v# 제외)
+find . -maxdepth 4 \( -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" -o -name "*.png" -o -name "*.PNG" \) 2>/dev/null | grep -v "_v[0-9]" | grep -v "/Image/" | grep -v "/character/"
 ```
+
+**영상·이미지 소스일 때**: PDF 없으면 Conti/{SEQ}/ 폴더를 먼저 확인.  
+Conti 폴더에 이미지가 있으면 그걸 소스로 사용 — 루트에 별도 파일 불필요.
 
 소스 없으면:
 ```
 소스 파일(PDF / 영상 / 콘티이미지)이 없습니다.
-프로젝트 폴더에 넣고 /GenInit을 다시 실행하세요.
+프로젝트 폴더 또는 Conti/{SEQ}/ 에 파일을 넣고 /GenInit을 다시 실행하세요.
 ```
 → 중단
 
@@ -178,7 +185,7 @@ ffmpeg -sseof -1 -i "{VIDEO_PATH}" -vframes 1 "{EP}/Conti/{SEQ}/frame_last.png" 
 
 ### 콘티이미지 모드
 
-감지된 jpg 이미지를 Read 툴로 순서대로 Vision 분석:
+감지된 jpg/png 이미지를 Read 툴로 순서대로 Vision 분석:
 - 각 이미지에서 샷사이즈·앵글·인물·액션 추출
 - 캐릭터 외형 추출 (Character.md용, 추정값)
 

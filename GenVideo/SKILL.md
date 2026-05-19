@@ -25,9 +25,9 @@ Image-to-video generation skill. Handles single shot or batch. Default model: Kl
 인자 파싱 전에 먼저 프로젝트 루트를 감지하고 캐시 상태를 확인한다.
 
 ```bash
-GRB_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
-RUNNER="$GRB_ROOT/grb_runner.py"
-CACHE="$GRB_ROOT/.grb_cache.json"
+PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
+RUNNER="$PROJ_ROOT/runner.py"
+CACHE="$PROJ_ROOT/.cache.json"
 ```
 
 ```bash
@@ -141,7 +141,11 @@ Shotprompt.md 형식:
 0030. 페어 샷도 start 번호로 작성 (0030+0031 호출 시 0030. 으로 찾음)
 ```
 
-`[multi]` 태그가 있으면 해당 샷 multi_shots 모드 활성화 (싱글 이미지 전용).
+`[multi]` 태그 동작 — **싱글 샷 전용** (페어 스펙 `+`와 무관):
+- **Kling + `[multi]`**: Kling 멀티샷 모드 — 단일 이미지에서 여러 클립 생성. runner.py 없으면 일반 싱글로 폴백.
+- **Seedance + `[multi]`**: 멀티 참조 모드 — `--image {현재}` + `--image {이전(-10)}` + `--image {다음(+10)}`. 앞뒤 샷 없으면 해당 `--image` 생략.
+
+페어 스펙 (`0010+0020`): `[multi]` 무관, 두 모델 모두 `--start-image` + `--end-image` 자동 사용.
 페어 모드에서 Shotprompt는 **start 번호**(`{SHOT}.`)로 조회한다.
 
 ## Step 6 — 이미지 파일 탐색 (샷별)
@@ -232,16 +236,41 @@ Pair 모드면 `image_files`에 [start_file, end_file] 두 파일 모두, `image
 
 출력: `CACHE_WRITE:0010:ok`
 
-## Step 8 — 영상 생성 (Python 러너 위임)
+## Step 8 — 영상 생성
 
-캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
+runner.py가 있으면 러너에 위임, 없으면 higgsfield CLI 직접 실행.
 
+**runner.py 있을 때:**
 ```bash
-cd "$GRB_ROOT" && python3 "$RUNNER" \
+cd "$PROJ_ROOT" && python3 "$RUNNER" \
   genvideo {SEQ_ID} {SHOT_SPEC} --model {model}
 ```
 
-모델 인자: `--model kling3_0` (기본) 또는 `--model seedance_2_0`
+**runner.py 없을 때 (직접 CLI):**
+
+```bash
+# 일반 싱글 샷
+higgsfield generate create {model} \
+  --image "{SHOT_IMG}" \
+  --prompt "..." \
+  --wait --wait-timeout 10m
+
+# [multi] + Kling → runner.py 없으면 일반 싱글로 폴백
+higgsfield generate create kling3_0 \
+  --image "{SHOT_IMG}" \
+  --prompt "..." \
+  --wait --wait-timeout 10m
+
+# [multi] + Seedance → 앞뒤 샷 --image 레퍼런스 추가
+higgsfield generate create seedance_2_0 \
+  --image "{SHOT_IMG}" \
+  --image "{PREV_IMG}" \   # 이전샷(-10) 있을 때만
+  --image "{NEXT_IMG}" \   # 다음샷(+10) 있을 때만
+  --prompt "..." \
+  --wait --wait-timeout 10m
+```
+
+모델 인자: `kling3_0` (기본) 또는 `seedance_2_0`
 
 **stdout 파싱 규칙:**
 
@@ -253,27 +282,24 @@ cd "$GRB_ROOT" && python3 "$RUNNER" \
 | `SHOT_FAIL:0010:{err}` | `❌ Shot 0010: {err}` |
 | `BATCH_DONE:{s}:{f}:{k}` | 최종 요약 출력 |
 
-완료 후 `open "{url}"` 호출로 브라우저 미리보기:
+완료 후 Safari로 미리보기 (우클릭 → 저장 가능):
 ```bash
-open "{마지막_완료_URL}"
+open -a "Safari" "{마지막_완료_URL}"
 ```
 
 ## Step 9 — 결과 보고
 
-출력 파일명: `{SHOT}_v{N}.mp4`
-- 소스 이미지가 `0010_v2.png`면 → `0010_v2.mp4`
-- 소스가 페어 또는 최초 single이면 → `0010_v1.mp4`
+runner.py 없는 직접 CLI 경로에서는 로컬 저장 없이 URL만 표시.
+(runner.py 있을 때는 runner가 저장 담당)
 
 **성공:**
 ```
 # Single
 ✅ Shot 0010 [single | kling]
-[0010_v1.mp4]({URL})
 {URL}
 
 # Pair
 ✅ Shot 0010+0011 [pair | kling]
-[0010_v1.mp4]({URL})
 {URL}
 ```
 

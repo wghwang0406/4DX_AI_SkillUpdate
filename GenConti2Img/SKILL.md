@@ -52,9 +52,9 @@ allowed-tools: Bash, Read
 ## Step 0 — 캐시 확인
 
 ```bash
-GRB_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
-RUNNER="$GRB_ROOT/grb_runner.py"
-CACHE="$GRB_ROOT/.grb_cache.json"
+PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
+RUNNER="$PROJ_ROOT/runner.py"
+CACHE="$PROJ_ROOT/.cache.json"
 ```
 
 ```bash
@@ -184,7 +184,7 @@ echo '{
 캐시에 프롬프트가 저장된 후 Python 러너에게 API 호출을 위임한다.
 
 ```bash
-cd "$GRB_ROOT" && python3 "$RUNNER" \
+cd "$PROJ_ROOT" && python3 "$RUNNER" \
   genconti2img {SEQ_ID} all --model {model}
 ```
 
