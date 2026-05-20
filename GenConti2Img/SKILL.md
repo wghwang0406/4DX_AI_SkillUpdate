@@ -1,5 +1,5 @@
 ---
-version: 1.2.0
+version: 1.3.0
 name: GenConti2Img
 description: |
   Storyboard(콘티) 이미지를 레퍼런스로 삼아 GPT Image 2 / Nano Banana Pro / Cinematic Studio 2.5로
@@ -107,12 +107,65 @@ ls "{EP}/Conti/{SEQ_ID}/" 2>/dev/null || echo "NOT FOUND"
 
 없으면 에러: `❌ 콘티 폴더를 찾을 수 없습니다: {EP}/Conti/{SEQ_ID}/`
 
-배경 이미지 확인:
+## Step 2-A — Sceneprompt.md 자동 보완
+
 ```bash
-ls "{EP}/Image/{SEQ_ID}/Background.png" 2>/dev/null || echo "NOT FOUND"
+wc -c "{EP}/Image/{SEQ_ID}/Sceneprompt.md" 2>/dev/null
 ```
 
-없으면 에러: `❌ Background 파일을 찾을 수 없습니다: {EP}/Image/{SEQ_ID}/Background.png`
+비어있거나 없으면 → 콘티 이미지 중 첫 번째를 Read 툴로 Vision 분석해 씬 분위기·장소·카메라 스타일을 **한국어로** Sceneprompt.md에 작성.
+
+```
+⚙️ Sceneprompt.md가 비어있어 콘티 이미지에서 자동 생성합니다...
+```
+
+## Step 2-B — Shotprompt.md 자동 보완
+
+```bash
+wc -c "{EP}/Image/{SEQ_ID}/Shotprompt.md" 2>/dev/null
+```
+
+비어있거나 없으면 → shotlist_{SEQ_ID}.md 읽기 + 콘티 이미지 각 샷 Vision 분석 → 샷별 한국어 방향 항목을 Shotprompt.md에 작성:
+
+```
+0010. {샷 사이즈} — {카메라 앵글}. {주요 액션/감정}.
+0020. ...
+```
+
+```
+⚙️ Shotprompt.md가 비어있어 콘티 이미지에서 자동 생성합니다...
+```
+
+## Step 2-C — Background.png 자동 생성
+
+```bash
+ls "{EP}/Image/{SEQ_ID}/Background.png" 2>/dev/null || echo "NOT_FOUND"
+```
+
+없으면 → Sceneprompt.md 내용 기반으로 배경 이미지 생성:
+
+```
+⚙️ Background.png가 없어 자동 생성합니다...
+```
+
+```bash
+higgsfield generate create gpt_image_2 \
+  --prompt "{Sceneprompt 전체 내용} — wide establishing shot, background only, no characters, no people" \
+  --aspect_ratio 16:9 \
+  --quality high \
+  --resolution 2k \
+  --wait --wait-timeout 10m
+```
+
+생성 후 로컬 저장:
+```bash
+curl -o "{EP}/Image/{SEQ_ID}/Background.png" "{URL}"
+```
+
+완료 메시지:
+```
+✅ Background.png 생성 완료 → {EP}/Image/{SEQ_ID}/Background.png
+```
 
 ## Step 3 — 콘티 이미지 목록 수집
 
@@ -256,7 +309,7 @@ No text, no subtitles, no watermarks, no storyboard annotations.
 | 상황 | 대응 |
 |---|---|
 | {EP}/Conti/{SEQ_ID}/ 없음 | 에러 중단, GenConti 먼저 실행 안내 |
-| Background.png 없음 | 에러 중단, 위치 안내 |
+| Background.png 없음 | Sceneprompt 기반 자동 생성 후 진행 |
 | shotlist 없음 | 에러 중단 |
 | 캐릭터 시트 없음 | 경고 후 캐릭터 레퍼런스 없이 생성 |
 | NSFW 차단 | 해당 shot 스킵, 완료 후 재시도 안내 |
