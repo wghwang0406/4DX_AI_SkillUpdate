@@ -5,7 +5,7 @@ description: |
   소스 파일(PDF/영상 샷클립/콘티이미지)을 감지해 MD 프롬프트 파일 작성 + 캐릭터 시트 이미지 생성.
   영상 모드: 샷 단위 클립(0010_v1.mp4) → 첫/끝 프레임을 Image 폴더에 연속 번호로 저장.
   캐릭터 시트: 소스 스타일 자동 감지 후 GPT Image 2로 무드보드형 생성.
-  MD 출력 전체 한국어. 폴더 구조는 별도 처리 — 이 스킬은 분석·생성만 담당.
+  MD 출력 전체 한국어. 폴더가 없으면 자동으로 생성한다.
   Use when: "GenInit", "프롬프트 파일 채워줘", "소스 분석해줘", "초기화해줘", source-to-md.
 argument-hint: "[EP##] [S##]"
 allowed-tools: Bash, Read, Write
@@ -14,7 +14,7 @@ allowed-tools: Bash, Read, Write
 # GenInit
 
 소스 파일(PDF·영상 샷클립·콘티이미지)을 분석해 MD 프롬프트 파일을 자동으로 채우고 캐릭터 시트를 생성한다.  
-폴더 구조 생성은 하지 않음 — 이미 존재하는 구조에서만 동작한다.  
+폴더가 없으면 자동으로 생성한다.  
 **모든 MD 파일은 한국어로 작성한다.**
 
 ## Step 1 — config.md 읽기 + 인자 파싱
@@ -34,22 +34,28 @@ Projectprompt.md가 있으면 읽어서 스타일 컨텍스트 파악:
 cat Projectprompt.md 2>/dev/null | head -60
 ```
 
-## Step 2 — 대상 경로 존재 확인
+## Step 2 — 대상 경로 확인 및 자동 생성
 
-폴더를 만들지 않음. 실제 존재하는지만 확인:
+폴더가 없으면 자동으로 만든다:
 
 ```bash
-ls {EP}/Image/{SEQ}/ 2>/dev/null || echo "PATH_MISSING"
-ls {EP}/Conti/{SEQ}/ 2>/dev/null || echo "PATH_MISSING"
-ls {EP}/character/ 2>/dev/null || echo "PATH_MISSING"
+mkdir -p {EP}/Image/{SEQ}
+mkdir -p {EP}/Conti/{SEQ}
+mkdir -p {EP}/character
+touch {EP}/Image/{SEQ}/Sceneprompt.md
+touch {EP}/Image/{SEQ}/Shotprompt.md
+touch {EP}/Conti/{SEQ}/shotlist_{SEQ}.md
 ```
 
-경로 없으면:
+새로 만들었으면 출력:
 ```
-⚠️ {EP}/Image/{SEQ}/ 폴더가 없습니다.
-폴더 구조를 먼저 만들어주세요.
+📁 폴더 생성: {EP}/Image/{SEQ}/, {EP}/Conti/{SEQ}/
 ```
-→ 중단
+
+config.md Episode Mapping에 해당 SEQ가 없으면 행 추가:
+```
+| {SEQ} | {EP} |
+```
 
 ## Step 3 — 소스 파일 감지
 
@@ -188,17 +194,12 @@ which ffmpeg 2>/dev/null || echo "NOT_FOUND"
 샷 단위 클립 하나당:
 
 ```bash
-# 첫 프레임 → {SHOT}_v1.png (스타트 이미지)
-ffmpeg -i "{SHOT}_v1.mp4" -vframes 1 "{EP}/Image/{SEQ}/{SHOT}_v1.png" -y
-
-# 끝 프레임 → {SHOT+1}_v1.png (엔드 이미지)
-ffmpeg -sseof -1 -i "{SHOT}_v1.mp4" -vframes 1 "{EP}/Image/{SEQ}/{SHOT+1}_v1.png" -y
+# 첫 프레임 → {SEQ}_{SHOT}_v1.png
+ffmpeg -i "{SHOT}_v1.mp4" -vframes 1 "{EP}/Image/{SEQ}/{SEQ}_{SHOT}_v1.png" -y
 ```
 
-번호 계산: `0010` → 끝프레임은 `0011`, `0020` → `0021`
-
-- `{SHOT}_v1.png` → GenImg2Img 스타일 변환 소스 / GenVideo 스타트 이미지
-- `{SHOT+1}_v1.png` → GenVideo 페어 모드(`0010+0011`) 엔드 이미지로 자연스럽게 연결
+- `{SEQ}_{SHOT}_v1.png` → GenImg2Img 스타일 변환 소스 / GenVideo 싱글 이미지
+- 페어 필요 시 수동으로 `{SEQ}_{SHOT}-1_v1.png`(스타트), `{SEQ}_{SHOT}-2_v1.png`(엔드) 파일 추가
 - Conti 폴더에는 저장하지 않음
 
 **Vision 분석 → 각 샷 MD 채우기 (한국어):**
@@ -225,8 +226,8 @@ which ffmpeg 2>/dev/null || echo "NOT_FOUND"
 **첫 프레임·마지막 프레임 추출:**
 
 ```bash
-ffmpeg -i "{VIDEO_PATH}" -vframes 1 "{EP}/Conti/{SEQ}/frame_first.png" -y
-ffmpeg -sseof -1 -i "{VIDEO_PATH}" -vframes 1 "{EP}/Conti/{SEQ}/frame_last.png" -y
+ffmpeg -i "{VIDEO_PATH}" -vframes 1 "{EP}/Conti/{SEQ}/{SEQ}_frame_first.png" -y
+ffmpeg -sseof -1 -i "{VIDEO_PATH}" -vframes 1 "{EP}/Conti/{SEQ}/{SEQ}_frame_last.png" -y
 ```
 
 **스타일 감지:** 두 프레임 Vision 분석으로 `DETECTED_STYLE` 결정  
@@ -284,6 +285,13 @@ Consistent design across all views, white background.
 No text, no labels, no watermarks.
 ```
 
+생성 전 **각 캐릭터마다 전체 프롬프트를 채팅에 출력**한 뒤 생성 진행:
+
+```
+🔍 {이름} 프롬프트:
+{위 프롬프트 구조에 실제 값이 채워진 전체 텍스트}
+```
+
 ### 생성 CLI
 
 ```bash
@@ -322,8 +330,8 @@ curl -o "{EP}/character/{이름}_Character_v1.png" "{URL}"
   {EP}/Image/{SEQ}/Shotprompt.md
 
 추출된 프레임: (샷 단위 영상 모드일 때만)
-  {EP}/Image/{SEQ}/0010_v1.png (첫프레임 → 스타트)
-  {EP}/Image/{SEQ}/0011_v1.png (끝프레임 → 엔드)
+  {EP}/Image/{SEQ}/{SEQ}_0010_v1.png (첫프레임 → 스타트)
+  {EP}/Image/{SEQ}/{SEQ}_0011_v1.png (끝프레임 → 엔드)
   ...
 
 생성된 캐릭터 시트:

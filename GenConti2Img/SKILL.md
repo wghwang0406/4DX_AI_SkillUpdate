@@ -29,14 +29,14 @@ allowed-tools: Bash, Read
 │   │   └── {name}_Character*.png
 │   ├── Conti/
 │   │   └── S41/
-│   │       ├── 0010_v1.png    ← 콘티 이미지
-│   │       ├── 0020_v1.png
+│   │       ├── S41_0010_v1.png    ← 콘티 이미지
+│   │       ├── S41_0020_v1.png
 │   │       └── shotlist_S41.md
 │   └── Image/
 │       └── S41/
-│           ├── Background.png
-│           ├── 0010_v1.png    ← 씬 이미지 출력
-│           └── 0020_v1.png
+│           ├── S41_Background.png
+│           ├── S41_0010_v1.png    ← 씬 이미지 출력
+│           └── S41_0020_v1.png
 ```
 
 ## 모델 단축명
@@ -139,13 +139,13 @@ wc -c "{EP}/Image/{SEQ_ID}/Shotprompt.md" 2>/dev/null
 ## Step 2-C — Background.png 자동 생성
 
 ```bash
-ls "{EP}/Image/{SEQ_ID}/Background.png" 2>/dev/null || echo "NOT_FOUND"
+ls "{EP}/Image/{SEQ_ID}/{SEQ_ID}_Background.png" 2>/dev/null || echo "NOT_FOUND"
 ```
 
 없으면 → Sceneprompt.md 내용 기반으로 배경 이미지 생성:
 
 ```
-⚙️ Background.png가 없어 자동 생성합니다...
+⚙️ {SEQ_ID}_Background.png가 없어 자동 생성합니다...
 ```
 
 ```bash
@@ -159,21 +159,21 @@ higgsfield generate create gpt_image_2 \
 
 생성 후 로컬 저장:
 ```bash
-curl -o "{EP}/Image/{SEQ_ID}/Background.png" "{URL}"
+curl -o "{EP}/Image/{SEQ_ID}/{SEQ_ID}_Background.png" "{URL}"
 ```
 
 완료 메시지:
 ```
-✅ Background.png 생성 완료 → {EP}/Image/{SEQ_ID}/Background.png
+✅ {SEQ_ID}_Background.png 생성 완료 → {EP}/Image/{SEQ_ID}/{SEQ_ID}_Background.png
 ```
 
 ## Step 3 — 콘티 이미지 목록 수집
 
 ```bash
-ls "{EP}/Conti/{SEQ_ID}/"[0-9]*.png 2>/dev/null | sort -V
+ls "{EP}/Conti/{SEQ_ID}/{SEQ_ID}_"[0-9]*.png 2>/dev/null | sort -V
 ```
 
-파일명에서 샷 번호 추출: `0010_v1.png` → `0010` (최신 버전만 사용, sort -V 후 tail로 선택)
+파일명에서 샷 번호 추출: `{SEQ_ID}_0010_v1.png` → `{SEQ_ID}_` 접두사 제거 후 4자리 숫자 추출 → `0010` (최신 버전만 사용, sort -V 후 tail로 선택)
 
 ## Step 4 — shotlist에서 샷별 캐릭터 정보 추출
 
@@ -222,8 +222,8 @@ echo '{
   "image_mode": "single",
   "multi_shot": false,
   "workflow": "genconti2img",
-  "conti_image": "EP01/Conti/S41/0010_v1.png",
-  "background_file": "EP01/Image/S41/Background.png",
+  "conti_image": "EP01/Conti/S41/S41_0010_v1.png",
+  "background_file": "EP01/Image/S41/S41_Background.png",
   "characters": ["해수", "의현"]
 }' | python3 "$RUNNER" write-shot {SEQ_ID}
 ```
@@ -248,7 +248,7 @@ cd "$PROJ_ROOT" && python3 "$RUNNER" \
 | 출력 | 표시 |
 |---|---|
 | `SHOT_START:0010` | `[1/N] Shot 0010 생성 중...` |
-| `SHOT_DONE:0010:{url}` | `✅ Shot 0010 → EP01/Image/S41/0010_v1.png\n[0010_v1.png]({url})\n{url}` |
+| `SHOT_DONE:0010:{url}` | `✅ Shot 0010 → EP01/Image/S41/S41_0010_v1.png\n[S41_0010_v1.png]({url})\n{url}` |
 | `SHOT_SKIP:0010:{url}` | `⏳ Shot 0010: 이미 완료됨` |
 | `SHOT_FAIL:0010:{err}` | `❌ Shot 0010: {err}` |
 | `BATCH_DONE:{s}:{f}:{k}` | `✅ {s}개 이미지 생성 완료` |
@@ -280,8 +280,8 @@ No text, no subtitles, no watermarks, no storyboard annotations.
 
 각 이미지:
 ```
-✅ Shot {SHOT} → {EP}/Image/{SEQ_ID}/{SHOT}_v{N}.png
-[{SHOT}_v{N}.png]({URL})
+✅ Shot {SHOT} → {EP}/Image/{SEQ_ID}/{SEQ_ID}_{SHOT}_v{N}.png
+[{SEQ_ID}_{SHOT}_v{N}.png]({URL})
 {URL}
 ```
 
