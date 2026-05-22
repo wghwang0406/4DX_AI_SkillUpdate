@@ -1,12 +1,12 @@
 ---
-version: 1.0.0
+version: 1.1.0
 name: GenImg2Img
 description: |
-  Image-to-image generation. User drags a reference image into the chat, then provides
-  model shorthand (gpt/nano/cinema) and a prompt.
+  Image-to-image generation. User provides a reference image (drag into chat OR type file path/name)
+  along with model shorthand (gpt/nano/cinema) and a prompt.
   gpt = GPT Image 2 (gpt_image_2), nano = Nano Banana Pro (nano_banana_2),
   cinema = Cinematic Studio 2.5 (cinematic_studio_2_5).
-  Extracts the attached image path from conversation context and passes it as --image.
+  Accepts image via chat attachment OR text-based file path/name input.
   Use when: "GenImg2Img", "이미지 스타일 변환", "레퍼런스 이미지로 생성", i2i, image to image.
 argument-hint: "<gpt|nano|cinema> <prompt>"
 allowed-tools: Bash, Read
@@ -14,7 +14,8 @@ allowed-tools: Bash, Read
 
 # GenImg2Img
 
-Image-to-image generation using Higgsfield. User must drag a reference image into the chat before (or together with) the command. The first argument is the model shorthand; everything after is the prompt.
+Image-to-image generation using Higgsfield. The first argument is the model shorthand; everything after is the prompt.
+Reference image can be provided by dragging into chat OR by typing the file path/name in the message.
 
 ## Step 1 — Parse Arguments
 
@@ -34,15 +35,27 @@ Show the enhanced prompt to the user before generating:
 
 Use the enhanced English prompt for generation.
 
-## Step 3 — Extract Attached Image Path
+## Step 3 — Resolve Image Path
 
-Look at the conversation context for a file attachment (image dragged into chat by the user). The attached image will appear as a file path in the conversation context — typically shown as an `ide_opened_file` or file attachment tag, or visible in the user's message.
+이미지 경로를 두 가지 방법으로 받는다. **방법 A를 우선 확인하고, 없으면 방법 B를 시도한다.**
 
-Extract the **absolute file path** of the attached image.
+**방법 A — 채팅 첨부 (드래그 또는 IDE attachment):**
+대화 컨텍스트에서 첨부된 파일 경로를 추출한다.
+`ide_opened_file` 태그, 파일 첨부 태그, 또는 메시지 내 첨부 경로에서 탐지.
 
-If no image attachment is found:
+**방법 B — 텍스트 입력 (파일명 또는 경로):**
+사용자 메시지(또는 프롬프트 인자)에서 이미지 파일 경로/이름을 파싱한다.
+- 절대 경로 (`/Users/.../image.png`) → 그대로 사용
+- 상대 경로 (`EP01/Image/S41/xxx.png`) → 현재 작업 디렉토리 기준으로 절대 경로 변환
+- 파일명만 (`image.png`) → 현재 프로젝트 폴더에서 `find`로 탐색:
+  ```bash
+  find . -maxdepth 6 -name "image.png" 2>/dev/null | head -1
+  ```
+  여러 개 발견 시 가장 최근 수정된 파일 사용.
+
+**둘 다 없으면:**
 ```
-❌ No image attached. Please drag an image into the chat before running GenImg2Img.
+❌ No image found. Drag an image into the chat, or include the file path/name in your message.
 ```
 Stop here.
 
