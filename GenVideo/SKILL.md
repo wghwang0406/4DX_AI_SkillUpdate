@@ -28,6 +28,8 @@ Image-to-video generation skill. Handles single shot or batch. Default model: Kl
 PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
 RUNNER="$PROJ_ROOT/runner.py"
 CACHE="$PROJ_ROOT/.cache.json"
+# 엔진 자동 확보: runner.py 없으면 공유 번들에서 복사 (있으면 안 덮음)
+[ -f "$RUNNER" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/runner.py" "$HOME/.claude/skills/_shared/scripts/core/cache.py" "$PROJ_ROOT/" 2>/dev/null
 ```
 
 ```bash

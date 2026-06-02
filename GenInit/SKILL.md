@@ -52,6 +52,33 @@ touch {EP}/Conti/{SEQ}/shotlist_{SEQ}.md
 📁 폴더 생성: {EP}/Image/{SEQ}/, {EP}/Conti/{SEQ}/
 ```
 
+### Step 2.5 — 공유 스크립트 시딩 (자동 복사)
+
+범용 엔진·헬퍼를 공유 번들(`~/.claude/skills/_shared/scripts/`)에서 프로젝트로 복사한다.
+**있으면 덮지 않는다(`cp -n`).** 프로젝트 루트(config.md 위치)를 `PROJ_ROOT`로 사용.
+
+```bash
+PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.exit(print(str(x))) or 0 for x in [p]+list(p.parents) if (x/'config.md').exists()]; sys.exit(print(str(p)))")
+SHARED="$HOME/.claude/skills/_shared/scripts"
+mkdir -p "$PROJ_ROOT/scripts"
+# 공통(영상 무관): 엔진 + 이미지 헬퍼
+cp -n "$SHARED/core/runner.py" "$SHARED/core/cache.py" "$PROJ_ROOT/" 2>/dev/null
+cp -n "$SHARED/core/gen_helper.py" "$SHARED/core/genconti2img_minimal.py" "$PROJ_ROOT/scripts/" 2>/dev/null
+```
+
+**영상 소스가 있을 때만** 영상 컷 헬퍼도 시딩한다 (스토리보드 mp4 존재 시):
+```bash
+if find "$PROJ_ROOT" -maxdepth 4 -name "*.mp4" 2>/dev/null | grep -q .; then
+  cp -n "$SHARED/optional/split_shot_cuts.py" "$SHARED/optional/extract_motion_frames.py" "$SHARED/optional/transition_to_single_frame.py" "$PROJ_ROOT/scripts/" 2>/dev/null
+  echo "🎬 영상 소스 감지 → 컷분할 헬퍼 시딩"
+fi
+echo "🐍 스크립트 시딩: runner.py + cache.py (+scripts/ 헬퍼)"
+```
+
+> 영상 컷 헬퍼(split_shot_cuts·extract_motion_frames·transition_to_single_frame)는
+> **스토리보드 영상(mp4)이 있어야** 동작하므로 영상 소스일 때만 복사한다.
+> 공유 번들이 없으면(처음 셋업 전) 이 단계는 조용히 스킵.
+
 config.md Episode Mapping에 해당 SEQ가 없으면 행 추가:
 ```
 | {SEQ} | {EP} |

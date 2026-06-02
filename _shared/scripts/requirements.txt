@@ -1,0 +1,11 @@
+# Python dependencies for the handoff scripts.
+# Core scripts (scripts/core/) rely only on the Python standard library
+# plus the external `higgsfield` CLI (installed separately, see README).
+#
+# The package below is only used by the OPTIONAL scripts (scripts/optional/),
+# which handle multi-cut storyboard video — NOT used by this project type.
+scenedetect
+
+# External (non-pip) tools required on PATH:
+#   - higgsfield   (image/video generation CLI; must be authenticated)
+#   - ffmpeg       (frame extraction; used by optional scripts)
