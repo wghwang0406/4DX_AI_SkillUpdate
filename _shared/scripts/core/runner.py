@@ -70,7 +70,7 @@ def resolve_episode(config: dict, seq_id: str) -> str:
 def load_config() -> dict:
     cfg = ROOT / "config.md"
     if not cfg.exists():
-        die(2, "config.md를 찾을 수 없습니다. /GenInit을 먼저 실행하세요.")
+        die(2, "config.md를 찾을 수 없습니다. /GenSetup을 먼저 실행하세요.")
     text = cfg.read_text(encoding="utf-8")
     project_code, project_title = "", ""
     episode_map = {}

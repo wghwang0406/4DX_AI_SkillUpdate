@@ -56,7 +56,7 @@ ls config.md 2>/dev/null | head -1
 
 없으면 중단:
 ```
-❌ config.md를 찾을 수 없습니다. 먼저 /GenInit을 실행하세요.
+❌ config.md를 찾을 수 없습니다. 먼저 /GenSetup을 실행하세요.
 ```
 
 있으면 Read 툴로 읽어 `project_code`와 Episode Mapping 테이블을 메모리에 보관.

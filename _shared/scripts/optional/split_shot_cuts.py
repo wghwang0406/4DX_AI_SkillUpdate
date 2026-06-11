@@ -189,7 +189,7 @@ def write_child_shotprompt(root: pathlib.Path, seq: str, child: str, cut_idx: in
     sp_dir.mkdir(parents=True, exist_ok=True)
     sp = sp_dir / "Shotprompt.md"
     if sp.exists() and sp.read_text(encoding="utf-8").strip():
-        return  # 이미 내용 있으면 덮지 않음 (GenInit 규칙과 동일)
+        return  # 이미 내용 있으면 덮지 않음 (GenSetup 규칙과 동일)
     content = (
         f"# {seq}_{child} Shotprompt\n\n"
         f"- 부모 샷: {seq}_{parent} (멀티컷 분할 cut #{cut_idx + 1})\n"

@@ -1,17 +1,17 @@
 ---
 version: 5.0.0
-name: GenInit
+name: GenSetup
 description: |
   소스 파일(PDF/영상 샷클립/콘티이미지)을 감지해 MD 프롬프트 파일 작성 + 캐릭터 시트 이미지 생성.
   영상 모드: 샷 단위 클립(0010_v1.mp4) → 첫/끝 프레임을 Image 폴더에 연속 번호로 저장.
   캐릭터 시트: 소스 스타일 자동 감지 후 GPT Image 2로 무드보드형 생성.
   MD 출력 전체 한국어. 폴더가 없으면 자동으로 생성한다.
-  Use when: "GenInit", "프롬프트 파일 채워줘", "소스 분석해줘", "초기화해줘", source-to-md.
+  Use when: "GenSetup", "GenInit"(레거시 별칭), "프롬프트 파일 채워줘", "소스 분석해줘", "초기화해줘", source-to-md.
 argument-hint: "[EP##] [S##]"
 allowed-tools: Bash, Read, Write
 ---
 
-# GenInit
+# GenSetup
 
 소스 파일(PDF·영상 샷클립·콘티이미지)을 분석해 MD 프롬프트 파일을 자동으로 채우고 캐릭터 시트를 생성한다.  
 폴더가 없으면 자동으로 생성한다.  
@@ -115,7 +115,7 @@ find . -maxdepth 4 \( -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" -o -name 
 소스 없으면:
 ```
 소스 파일(PDF / 영상 / 콘티이미지)이 없습니다.
-프로젝트 폴더 또는 Conti/{SEQ}/ 에 파일을 넣고 /GenInit을 다시 실행하세요.
+프로젝트 폴더 또는 Conti/{SEQ}/ 에 파일을 넣고 /GenSetup을 다시 실행하세요.
 ```
 → 중단
 
@@ -196,7 +196,7 @@ Read 툴로 PDF를 읽는다.
 
 **4-E. Projectprompt.md (한국어)**
 
-신규 프로젝트는 Projectprompt.md가 없거나 비어있는 게 정상이다. GenInit이 최초 실행 시 자동으로 생성한다.
+신규 프로젝트는 Projectprompt.md가 없거나 비어있는 게 정상이다. GenSetup이 최초 실행 시 자동으로 생성한다.
 이미 내용이 있으면 스킵.
 
 비어있으면: PDF/영상/이미지 전체를 분석해 장르·세계관·주요 공간·색감·조명 방향성을 채운다.

@@ -8,7 +8,7 @@
 ## 워크플로우 순서
 
 ```
-GenInit → GenConti → GenImg2Img → GenConti2Img → GenVideo
+GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 ```
 
 ---
@@ -25,15 +25,15 @@ GenInit → GenConti → GenImg2Img → GenConti2Img → GenVideo
 
 ## 스킬별 요약
 
-### GenInit (v5.0.0)
-**목적:** 소스 파일 분석 → MD 프롬프트 파일 + 캐릭터 시트 자동 생성
+### GenSetup (v5.0.0)
+**목적:** 소스 파일 분석 → MD 프롬프트 파일 + 캐릭터 시트 자동 생성 (구 GenInit)
 
 **인자:** `[EP##] [S##]` (없으면 config.md 첫 번째 매핑 사용)
 
 **소스 우선순위:** PDF > 샷단위영상(`0010_v1.mp4`) > 시퀀스영상 > 콘티이미지
 
 **생성 파일:**
-- `Projectprompt.md` ← **신규 프로젝트는 항상 비어있음, GenInit이 최초 실행 시 자동 생성**
+- `Projectprompt.md` ← **신규 프로젝트는 항상 비어있음, GenSetup이 최초 실행 시 자동 생성**
 - `{EP}/character/Character.md`
 - `{EP}/Image/{SEQ}/Sceneprompt.md`
 - `{EP}/Image/{SEQ}/Shotprompt.md`
