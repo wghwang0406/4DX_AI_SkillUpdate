@@ -16,7 +16,9 @@ allowed-tools: Bash, Read
 
 Image-to-video generation skill. Handles single shot or batch. Default model: Kling 3.0.
 
-**Final prompt = Projectprompt + Sceneprompt + Shotprompt (번역, 있을 때만) + 이미지 시각 분석**
+**프롬프트 합성은 runner가 코드로 담당한다.** 모델은 번역된 슬롯(`scene_en` / `shot_dir_en` / `vision_en`)만 채워 캐시에 저장하고, runner가 이를 **모션 우선 구조**로 조립해 `--prompt`에 넣는다. (i2v는 정지 화면을 이미지가 담당하므로 정적 재묘사보다 카메라·모션·동작이 중요)
+
+**빈 MD 자동 보완:** Sceneprompt/Shotprompt가 비어있으면 샷 이미지를 Vision 분석해 자동으로 채운다(한국어). Projectprompt는 제외(GenSetup 소관). 슬롯이 채워지려면 이 MD가 있어야 하므로 슬롯 작성(Step 7) 전에 수행한다.
 
 캐시가 있으면 분석을 스킵하고, 없으면 기존 분석 후 캐시에 저장한다.
 
@@ -121,24 +123,46 @@ ls "Projectprompt.md" 2>/dev/null | head -1
 
 없으면 스킵.
 
-## Step 4 — Sceneprompt.md 읽기 (Required)
+## Step 4 — Sceneprompt.md 읽기 + 자동 보완 (Required)
 
 ```bash
-ls "{EP}/Image/{SEQ}/Sceneprompt.md" 2>/dev/null | head -1
+wc -c "{EP}/Image/{SEQ}/Sceneprompt.md" 2>/dev/null || echo "0 NOT_FOUND"
 ```
 
-없으면 중단:
-```
-❌ Sceneprompt not found: {EP}/Image/{SEQ}/Sceneprompt.md
-```
+**내용이 있으면** → Read로 읽어 사용 (덮어쓰지 않음).
 
-## Step 5 — Shotprompt.md 읽기 (Optional)
+**비어있거나(헤더/공백만) 없으면** → **중단하지 말고 자동 보완**:
+```
+⚙️ Sceneprompt.md가 비어있어 샷 이미지에서 자동 생성합니다...
+```
+1. 대상 시퀀스 샷 이미지 중 대표 1~2장을 Read 툴로 Vision 분석.
+2. 씬 분위기·장소·조명·카메라 스타일을 **한국어로** Sceneprompt.md에 작성 (Write).
+3. 작성한 내용을 사용자에게 **출력해 보여준 뒤** 이어서 진행 (승인 대기 없음).
+4. MD를 새로 썼으므로 → **캐시 정합성 처리**(아래 노트) 적용.
+
+> **⚠️ 캐시 정합성:** Step 0 `check-cache`는 보완 **이전** MD sig로 판정한다.
+> Sceneprompt/Shotprompt를 새로 채웠다면 해당 시퀀스 대상 샷을 **전부 `needs_analysis`로
+> 간주**하고 Step 3부터 재진행한다 (또는 `check-cache`를 재실행). 채운 내용이 슬롯·sig에 반영됨.
+
+## Step 5 — Shotprompt.md 읽기 + 자동 보완 (Optional → 자동 채움)
 
 ```bash
-ls "{EP}/Image/{SEQ}/Shotprompt.md" 2>/dev/null | head -1
+wc -c "{EP}/Image/{SEQ}/Shotprompt.md" 2>/dev/null || echo "0 NOT_FOUND"
 ```
 
-없으면 스킵.
+**내용이 있으면** → Read로 읽어 사용 (덮어쓰지 않음).
+
+**비어있거나 없으면** → **자동 보완**:
+```
+⚙️ Shotprompt.md가 비어있어 샷 이미지에서 자동 생성합니다...
+```
+1. 대상 각 샷 이미지를 Vision 분석 (있으면 `{EP}/Conti/{SEQ}/shotlist_{SEQ}.md` 참고).
+2. **i2v용이므로 정지 묘사보다 움직임/카메라워크를 추론**해 샷별 한국어 방향을 작성 (Write):
+   ```
+   0010. {카메라 움직임} — {인물/피사체 동작·감정 변화}.
+   0020. ...
+   ```
+3. 작성한 내용을 **출력해 보여준 뒤** 이어서 진행. MD를 새로 썼으면 위 캐시 정합성 노트 적용.
 
 Shotprompt.md 형식:
 ```
@@ -188,8 +212,8 @@ END_IMG="${END_IMG:-$(ls "{EP}/Image/{SEQ}/{SEQ}_{END}_v"*.png 2>/dev/null | sor
 
 찾으면:
 - `[multi]` 태그 → `MULTI_SHOT=true` (Single 전용, Pair는 무시)
-- 한국어 텍스트 → 영어 번역 → `[Shot Direction]` 블록으로 사용
-찾지 못하면: Shot Direction 없이 진행, `MULTI_SHOT=false`.
+- 한국어 텍스트 → 영어 번역 → `shot_dir_en` 슬롯에 사용 (7c)
+찾지 못하면: `shot_dir_en`을 이미지 기반 모션으로 채우고, `MULTI_SHOT=false`.
 
 ### 7b. Vision 분석
 
@@ -202,27 +226,20 @@ Read 툴로 이미지 분석:
 - 이미지 내용과 Shot Direction에 맞는 동작
 - 분위기/조명 뉘앙스
 
-### 7c. 최종 프롬프트 구성
+### 7c. 프롬프트 슬롯 작성 (모델은 슬롯만, 조립은 runner)
 
-**Shotprompt 있을 때:**
-```
-{Projectprompt contents (있을 때만)}
+최종 프롬프트를 직접 이어붙이지 말 것. 대신 아래 **3개 슬롯을 영문·간결하게** 채운다.
+runner가 `scene_en → Camera & motion(shot_dir_en) → Action(vision_en)` 순서로 조립한다.
 
-{Sceneprompt contents}
+| 슬롯 | 내용 | 소스 |
+|---|---|---|
+| `scene_en` | 씬 무드/조명/톤 (필수). Projectprompt 핵심 톤이 있으면 1줄로 녹여 포함 | Projectprompt + Sceneprompt 번역 |
+| `shot_dir_en` | **카메라워크·모션·액션 디렉션 (핵심).** i2v에서 가장 중요 — 비우지 말 것 | Shotprompt 해당 샷 줄 번역 |
+| `vision_en` | 이미지에서 읽은 **움직임/표정변화/카메라 흐름만.** 정지 화면(구도·색·의상·인물 외형) 재묘사 **금지** | 이미지 vision 분석 |
 
-[Shot Direction]: {English translation}
-
-{image-specific motion and scene description}
-```
-
-**Shotprompt 없을 때:**
-```
-{Projectprompt contents (있을 때만)}
-
-{Sceneprompt contents}
-
-{image-specific motion and scene description}
-```
+- 한국어 소스는 모두 **영어로 번역**해 넣는다.
+- Shotprompt에 해당 샷 줄이 없으면 `shot_dir_en`은 이미지 기반 모션으로 대체하되 최대한 채운다.
+- 정적 묘사를 늘리면 영상 모델의 모션 신호가 희석되므로 **각 슬롯은 짧고 명료하게.**
 
 ## Step 7d — 캐시 저장 (분석한 샷만)
 
@@ -233,8 +250,10 @@ Read 툴로 이미지 분석:
 ```bash
 echo '{
   "shot": "0010",
-  "prompt": "완성된 최종 프롬프트 전체",
-  "vision_text": "이미지 분석 요약",
+  "scene_en": "번역된 씬 무드/조명/톤 (Project 핵심 톤 포함)",
+  "shot_dir_en": "번역된 카메라워크·모션·액션 디렉션 (핵심)",
+  "vision_en": "이미지에서 읽은 움직임/표정변화/카메라 흐름만 (정적 재묘사 금지)",
+  "vision_text": "이미지 분석 요약 (참고 저장용)",
   "image_files": ["EP01/Image/S41/S41_0010_v1.png"],
   "image_sigs": [],
   "image_mode": "single",
@@ -243,6 +262,8 @@ echo '{
 }' | python3 "$RUNNER" write-shot {SEQ_ID}
 ```
 
+`scene_en`/`shot_dir_en`/`vision_en` 3개 슬롯이 runner의 최종 프롬프트 재료다 (Step 7c 참조).
+레거시 단일 `prompt` 필드도 여전히 허용되며, 슬롯이 하나도 없을 때만 폴백으로 사용된다.
 `image_sigs`는 비워두면 Python이 자동으로 파일에서 읽는다.
 Pair 모드면 `image_files`에 [start_file, end_file] 두 파일 모두, `image_mode`는 `"pair"`.
 `shot` 키는 항상 **start 번호** 사용 (러너가 캐시를 start 번호로 조회).

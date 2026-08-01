@@ -139,7 +139,13 @@ class CacheManager:
 
     def is_prompt_valid(self, ep: str, seq: str, shot: str) -> bool:
         s = self.get_shot(ep, seq, shot)
-        if not s or not s.get("prompt") or not s.get("prompt_sig"):
+        if not s or not s.get("prompt_sig"):
+            return False
+        # 레거시 단일 prompt 또는 구조화 슬롯(genvideo) 중 하나라도 있으면 유효
+        has_text = bool(s.get("prompt")) or any(
+            s.get(k) for k in ("scene_en", "shot_dir_en", "vision_en")
+        )
+        if not has_text:
             return False
         seq_data = self._seq(ep, seq)
         proj_data = self._data.get("project", {})

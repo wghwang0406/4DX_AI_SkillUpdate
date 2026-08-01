@@ -150,6 +150,30 @@ def next_version(ep: str, seq: str, shot: str, ext: str) -> int:
 
 # ── Higgsfield 커맨드 빌더 ───────────────────────────────────────────────────
 
+def compose_video_prompt(shot: dict) -> str:
+    """캐시 샷 dict에서 영상 프롬프트를 '모션 우선' 구조로 조립.
+
+    슬롯: scene_en(씬 무드/조명) / shot_dir_en(카메라·모션, 핵심) / vision_en(동작).
+    i2v 특성상 정적 재묘사는 이미지가 담당하므로 모션·디렉션을 앞세운다.
+    셋 다 없으면 레거시 단일 prompt로 폴백 (기존 캐시/genconti2img 호환).
+    """
+    scene = (shot.get("scene_en") or "").strip()
+    shot_dir = (shot.get("shot_dir_en") or "").strip()
+    vision = (shot.get("vision_en") or "").strip()
+
+    if not (scene or shot_dir or vision):
+        return (shot.get("prompt") or "").strip()
+
+    parts = []
+    if scene:
+        parts.append(scene)
+    if shot_dir:
+        parts.append(f"Camera & motion: {shot_dir}")
+    if vision:
+        parts.append(f"Action: {vision}")
+    return "\n".join(parts)
+
+
 def build_genvideo_cmd(
     model: str, prompt: str, image_mode: str, image_files: list, multi_shot: bool
 ) -> list:
@@ -274,10 +298,15 @@ def run_genvideo(config: dict, ep: str, seq: str, args) -> int:
             skipped += 1
             continue
 
-        if not s or not s.get("prompt"):
+        prompt = compose_video_prompt(s) if s else ""
+        if not prompt:
             print(f"SHOT_FAIL:{shot}:캐시에 프롬프트 없음 — /GenVideo로 먼저 분석 실행 필요", flush=True)
             fail += 1
             continue
+
+        # 모션 디렉션이 비면 i2v가 밋밋해짐 — 경고만 하고 진행
+        if not (s.get("shot_dir_en") or "").strip() and (s.get("scene_en") or s.get("vision_en")):
+            print(f"⚠️  Shot {shot}: shot_dir_en(모션 디렉션) 없음 — 영상이 밋밋할 수 있음", file=sys.stderr, flush=True)
 
         image_mode = s.get("image_mode", "single")
         image_files = s.get("image_files", [])
@@ -291,12 +320,12 @@ def run_genvideo(config: dict, ep: str, seq: str, args) -> int:
         if args.dry_run:
             print(
                 f"SHOT_DRY:{shot}:[{image_mode}] model={model} "
-                f"prompt_len={len(s['prompt'])} multi={multi_shot}",
+                f"prompt_len={len(prompt)} multi={multi_shot}",
                 flush=True,
             )
             continue
 
-        cmd = build_genvideo_cmd(model, s["prompt"], image_mode, image_files, multi_shot)
+        cmd = build_genvideo_cmd(model, prompt, image_mode, image_files, multi_shot)
         url, job_id, err = run_job(cmd)
 
         if err:

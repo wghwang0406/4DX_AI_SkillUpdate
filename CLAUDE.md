@@ -126,7 +126,9 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 - Kling + `[multi]` → 멀티샷 모드
 - Seedance + `[multi]` → 앞뒤 샷 이미지 레퍼런스 추가
 
-**프롬프트 구성:** Projectprompt + Sceneprompt + Shotprompt + Vision 분석
+**프롬프트 구성:** 모델은 번역된 슬롯(`scene_en`/`shot_dir_en`/`vision_en`)만 채우고, runner가 **모션 우선 구조**로 코드 합성 → `--prompt`. (`vision_en`은 정적 재묘사 금지, 움직임만. `shot_dir_en` 비면 경고) / 레거시 단일 `prompt`도 폴백 지원
+
+**빈 MD 자동 보완:** Sceneprompt/Shotprompt 비어있으면 샷 이미지 Vision 분석해 자동 생성(한국어) → 보여주고 진행. Projectprompt 제외(GenSetup 소관). 보완으로 MD 새로 쓰면 해당 샷 needs_analysis로 재판정
 
 ---
 
