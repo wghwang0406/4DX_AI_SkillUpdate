@@ -32,11 +32,28 @@ import subprocess
 import sys
 import urllib.request
 
+# 이 파일은 의도적으로 아무것도 import 하지 않으므로(위 docstring 참고)
+# 모델 표를 인라인으로 둔다. **정본은 models.py 다** — 거기를 먼저 고치고
+# 필요하면 여기 사본을 맞춘다.
 MODEL_MAP = {
     "gpt": "gpt_image_2",
     "nano": "nano_banana_2",
     "cinema": "cinematic_studio_2_5",
 }
+
+# 모델별로 받는 품질 플래그가 다르다. gpt 외에 --quality high 를 붙이면
+# Unknown params / Invalid values 로 실패한다.
+_QUALITY_ONLY = ("text2image_soul_v2", "soul_cinematic", "soul_cinema_studio")
+
+
+def image_flags(model_id: str, resolution: str = "2k") -> list:
+    if model_id == "gpt_image_2":
+        return ["--quality", "high", "--resolution", resolution]
+    if model_id in _QUALITY_ONLY:
+        return ["--quality", "2k"]                 # resolution 파라미터가 없다
+    if model_id == "seedream_v4_5":
+        return ["--quality", "high"]
+    return ["--resolution", resolution]            # nano / cinema 등
 
 
 def project_root() -> pathlib.Path:
@@ -82,7 +99,7 @@ def run_higgsfield(model_id: str, conti: pathlib.Path, sheets: list) -> tuple:
     cmd = ["higgsfield", "generate", "create", model_id, "--prompt", prompt, "--image", str(conti)]
     for s in sheets:
         cmd += ["--image", str(s)]
-    cmd += ["--aspect_ratio", "16:9", "--quality", "high", "--resolution", "2k",
+    cmd += ["--aspect_ratio", "16:9", *image_flags(model_id),
             "--wait", "--wait-timeout", "10m"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=660)

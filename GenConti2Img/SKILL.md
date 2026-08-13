@@ -81,7 +81,9 @@ PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.
 RUNNER="$PROJ_ROOT/runner.py"
 CACHE="$PROJ_ROOT/.cache.json"
 # 엔진 자동 확보: runner.py 없으면 공유 번들에서 복사 (있으면 안 덮음)
-[ -f "$RUNNER" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/runner.py" "$HOME/.claude/skills/_shared/scripts/core/cache.py" "$PROJ_ROOT/" 2>/dev/null
+[ -f "$RUNNER" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/runner.py" "$HOME/.claude/skills/_shared/scripts/core/cache.py" "$HOME/.claude/skills/_shared/scripts/core/models.py" "$PROJ_ROOT/" 2>/dev/null
+# runner.py 는 있는데 models.py 만 없는 프로젝트도 보정한다 (runner가 import 한다)
+[ -f "$PROJ_ROOT/models.py" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/models.py" "$PROJ_ROOT/" 2>/dev/null
 ```
 
 ```bash

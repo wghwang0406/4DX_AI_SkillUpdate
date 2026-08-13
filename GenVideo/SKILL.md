@@ -46,7 +46,9 @@ PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.
 RUNNER="$PROJ_ROOT/runner.py"
 CACHE="$PROJ_ROOT/.cache.json"
 # 엔진 자동 확보: runner.py 없으면 공유 번들에서 복사 (있으면 안 덮음)
-[ -f "$RUNNER" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/runner.py" "$HOME/.claude/skills/_shared/scripts/core/cache.py" "$PROJ_ROOT/" 2>/dev/null
+[ -f "$RUNNER" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/runner.py" "$HOME/.claude/skills/_shared/scripts/core/cache.py" "$HOME/.claude/skills/_shared/scripts/core/models.py" "$PROJ_ROOT/" 2>/dev/null
+# runner.py 는 있는데 models.py 만 없는 프로젝트도 보정한다 (runner가 import 한다)
+[ -f "$PROJ_ROOT/models.py" ] || cp -n "$HOME/.claude/skills/_shared/scripts/core/models.py" "$PROJ_ROOT/" 2>/dev/null
 ```
 
 ```bash
@@ -95,6 +97,7 @@ grep "project_code:" config.md | awk '{print $2}'
 - 모델 (선택):
   - 없으면 → Kling 3.0 (`kling3_0`)
   - `seedance` → Seedance 2.0 (`seedance_2_0`)
+  - `seedance25` → Seedance 2.5 (`seedance_2_5`) — 레퍼런스 30장까지, 단 **720p 상한**
   - **모델을 명시하면 러너가 자동 전환하지 않는다** (아래 모델 전환 규칙 참조)
 - 컷 지시 (선택, 한국어): `컷으로` / `멀티샷으로` / `컷 나눠서` / `한 테이크로` / `한 컷으로`
   - 있으면 `format_mode` 슬롯에 그대로 반영한다
@@ -133,12 +136,20 @@ EP01/Image/S41/
 
 `higgsfield model get`으로 확인한 값이다.
 
-| | Kling 3.0 | Seedance 2.0 |
-|---|---|---|
-| 시작/끝 프레임 | `start_image` / `end_image` | `start_image` / `end_image` |
-| 레퍼런스 이미지 | **없음** (파라미터 자체가 없다) | `image_references` |
-| 이미지 총 상한 | 2장 (start/end) | **9장** (start·end 포함) |
-| 컷/멀티샷 파라미터 | 없음 — 프롬프트로 | 없음 — 프롬프트로 |
+| | Kling 3.0 | Seedance 2.0 | Seedance 2.5 |
+|---|---|---|---|
+| 시작/끝 프레임 | `start_image` / `end_image` | `start_image` / `end_image` | `start_image` / `end_image` |
+| 레퍼런스 이미지 | **없음** (파라미터 자체가 없다) | `image_references` | `image_references` |
+| 이미지 총 상한 | 2장 (start/end) | **9장** (start·end 포함) | **30장** |
+| 최대 해상도 | 4k (`--mode 4k`) | **4k** | **720p** |
+| 21:9 | **없음** | 있음 | 있음 |
+| 컷/멀티샷 파라미터 | 없음 — 프롬프트로 | 없음 — 프롬프트로 | 없음 — 프롬프트로 |
+
+> **2.5는 720p가 끝이다.** 고해상도가 필요하면 2.0을 쓰거나, 2.5로 뽑고
+> `bytedance_video_upscale`(최대 4k, `--preset aigc`) / `topaz_video`(최대 2160p)로 올린다.
+>
+> **2.5는 `start_image`/`end_image`를 쓰려면 `--mode omni_reference`가 필요하다.**
+> 기본 `t2v` 모드는 레퍼런스를 아예 받지 않는다.
 
 러너의 처리 (`plan_shot_media`):
 - 키프레임 3장 이상 + Kling **기본값** → **Seedance로 자동 전환** + 알림

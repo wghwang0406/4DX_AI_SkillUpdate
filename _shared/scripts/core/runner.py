@@ -32,16 +32,7 @@ ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
 from cache import CacheManager, ShotlistUpdater
-
-MODEL_MAP = {
-    "gpt": "gpt_image_2",
-    "nano": "nano_banana_2",
-    "cinema": "cinematic_studio_2_5",
-    "kling": "kling3_0",
-    "kling3_0": "kling3_0",
-    "seedance": "seedance_2_0",
-    "seedance_2_0": "seedance_2_0",
-}
+from models import MODEL_MAP, caps, image_flags, video_max_images
 
 
 # ── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -299,6 +290,12 @@ def build_genvideo_cmd(model: str, prompt: str, keyframes: list, refs: list) -> 
         cmd += ["--mode", "pro"]
 
     k = [abs_path(x) for x in keyframes]
+
+    # Seedance 2.5 / Cinema Studio 4.0 계열은 기본 모드가 t2v 라 레퍼런스를 아예 안 받는다.
+    # start/end 이미지를 쓰려면 omni_reference 로 바꿔야 한다.
+    if caps(model).get("needs_omni_mode") and (k or refs):
+        cmd += ["--mode", "omni_reference"]
+
     if not k:
         return cmd
 
@@ -338,11 +335,14 @@ def plan_shot_media(model: str, keyframes: list, refs: list, forced_model: bool 
         warn.append(f"레퍼런스 {len(rf)}장은 Kling이 받지 않아 제외됩니다 (Seedance를 쓰세요)")
         rf = []
 
+    # 상한은 모델마다 다르다 (Kling 2 / Seedance 2.0 9 / Seedance 2.5 30).
+    # 표에 없는 모델은 Seedance 2.0 기준으로 떨어진다.
+    cap = video_max_images(model, default=MAX_IMAGES_SEEDANCE)
     total = len(kf) + len(rf)
-    if total > MAX_IMAGES_SEEDANCE:
-        drop = total - MAX_IMAGES_SEEDANCE
+    if total > cap:
+        drop = total - cap
         rf = rf[: max(0, len(rf) - drop)]
-        warn.append(f"이미지 총 {total}장 — 상한 {MAX_IMAGES_SEEDANCE}장이라 레퍼런스 {drop}장을 뺐습니다")
+        warn.append(f"이미지 총 {total}장 — {model} 상한 {cap}장이라 레퍼런스 {drop}장을 뺐습니다")
 
     return model, kf, rf, warn
 
@@ -428,14 +428,16 @@ def build_genconti2img_cmd(
     def abs_path(p):
         return str(p) if pathlib.Path(p).is_absolute() else str(ROOT / p)
 
+    # 품질 플래그는 모델마다 받는 게 다르다 — models.CAPS를 보고 붙인다.
+    # (gpt만 --quality를 받는다. nano/cinema에 붙이면 Unknown params로 실패,
+    #  soul 계열은 값이 1.5k|2k라 high를 넣으면 Invalid values로 실패한다.)
     cmd = [
         "higgsfield", "generate", "create", model_id,
         "--prompt", prompt,
         "--image", abs_path(background),
         "--image", abs_path(conti_image),
         "--aspect_ratio", "16:9",
-        "--quality", "high",
-        "--resolution", "2k",
+        *image_flags(model_id, quality="high", resolution="2k"),
         "--wait", "--wait-timeout", "10m",
     ]
     for ci in char_images:

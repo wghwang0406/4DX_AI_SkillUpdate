@@ -37,13 +37,6 @@ import subprocess
 import sys
 import urllib.request
 
-MODEL_MAP = {
-    "gpt": "gpt_image_2",
-    "nano": "nano_banana_2",
-    "cinema": "cinematic_studio_2_5",
-}
-
-
 # ── 공통 헬퍼 (standalone) ───────────────────────────────────────────────────
 
 def project_root() -> pathlib.Path:
@@ -52,6 +45,30 @@ def project_root() -> pathlib.Path:
         if (cand / "config.md").exists():
             return cand
     return p
+
+
+# 모델 표는 프로젝트 루트의 models.py 가 단일 출처다.
+# 이 파일은 scripts/ 아래에 놓이므로 루트를 sys.path 에 넣고 가져온다.
+# models.py 가 없는 구버전 프로젝트에서도 죽지 않도록 폴백을 둔다.
+sys.path.insert(0, str(project_root()))
+try:
+    from models import MODEL_MAP, image_flags
+except ImportError:                                        # models.py 미배포 프로젝트
+    MODEL_MAP = {
+        "gpt": "gpt_image_2",
+        "nano": "nano_banana_2",
+        "cinema": "cinematic_studio_2_5",
+    }
+
+    def image_flags(model_id, quality="high", resolution="2k"):
+        # gpt 만 --quality 를 받는다. 나머지는 붙이면 CLI가 거부한다.
+        if model_id in ("gpt_image_2",):
+            return ["--quality", quality, "--resolution", resolution]
+        if model_id in ("text2image_soul_v2", "soul_cinematic", "soul_cinema_studio"):
+            return ["--quality", "2k"]
+        if model_id in ("seedream_v4_5",):
+            return ["--quality", "high"]
+        return ["--resolution", resolution]
 
 
 def normalize_seq(seq_id: str) -> str:
@@ -141,8 +158,7 @@ def build_cmd(model_id: str, prompt: str, images: list) -> list:
         cmd += ["--image", str(img)]
     cmd += [
         "--aspect_ratio", "16:9",
-        "--quality", "high",
-        "--resolution", "2k",
+        *image_flags(model_id, quality="high", resolution="2k"),
         "--wait", "--wait-timeout", "10m",
     ]
     return cmd

@@ -88,7 +88,7 @@ PROJ_ROOT=$(python3 -c "import pathlib,sys; p=pathlib.Path('.').resolve(); [sys.
 SHARED="$HOME/.claude/skills/_shared/scripts"
 mkdir -p "$PROJ_ROOT/scripts"
 # 공통(영상 무관): 엔진 + 이미지 헬퍼
-cp -n "$SHARED/core/runner.py" "$SHARED/core/cache.py" "$PROJ_ROOT/" 2>/dev/null
+cp -n "$SHARED/core/runner.py" "$SHARED/core/cache.py" "$SHARED/core/models.py" "$PROJ_ROOT/" 2>/dev/null
 cp -n "$SHARED/core/gen_helper.py" "$SHARED/core/genconti2img_minimal.py" "$PROJ_ROOT/scripts/" 2>/dev/null
 ```
 

@@ -26,9 +26,29 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 ## 공통 규칙
 
 - **파일명:** `{SEQ}_{SHOT}_v{N}.{ext}` (예: `S41_0010_v1.png`)
-- **모델 단축명:** `gpt` = gpt_image_2 / `nano` = nano_banana_2 / `cinema` = cinematic_studio_2_5
-  / `soul` = text2image_soul_v2 (Soul 2.0) / `soulcine` = soul_cinematic (Soul Cinema)
-  / `seed` = seedream_v4_5 (텍스처 패스 전용)
+- **모델 단축명 — 정본은 `_shared/scripts/core/models.py`.** 여기 표는 사본이니
+  고칠 땐 `models.py`를 먼저 고친다. `python3 models.py --check`로 라이브 CLI와 대조된다.
+
+  | 종류 | 단축명 → ID |
+  |---|---|
+  | 이미지 | `gpt`=gpt_image_2 / `nano`=nano_banana_2 / `cinema`=cinematic_studio_2_5 / `soul`=text2image_soul_v2 / `soulcine`=soul_cinematic / `seed`=seedream_v4_5 |
+  | 영상 | `kling`=kling3_0 / `seedance`=seedance_2_0 / `seedance25`=seedance_2_5 |
+  | 업스케일 | `upscale`=bytedance_video_upscale / `topaz`=topaz_video |
+
+- **품질 플래그는 모델마다 다르다.** 코드에서는 `models.image_flags()`가 붙여 주고,
+  CLI를 직접 칠 땐 아래를 따른다. 틀리면 `Unknown params` / `Invalid values`로 실패한다.
+
+  | 모델 | 붙이는 것 |
+  |---|---|
+  | `gpt_image_2` | `--quality low\|medium\|high` + `--resolution 1k\|2k\|4k` |
+  | `nano_banana_2` · `cinematic_studio_2_5` | `--resolution 1k\|2k\|4k` — **`--quality` 없음** |
+  | `text2image_soul_v2` · `soul_cinematic` | `--quality 1.5k\|2k` — **`--resolution` 없음** |
+  | `seedream_v4_5` | `--quality basic\|high` — **`--resolution` 없음** |
+
+- **21:9가 없는 모델:** `gpt_image_2`, `text2image_soul_v2`, `kling3_0`. 와이드가 필요하면 각각
+  `nano_banana_2`·`soul_cinematic`·`seedance_2_0`으로 간다.
+- **`seedance_2_5`는 720p 상한**이다 (2.0은 4k까지). 고해상도가 필요하면 2.0을 쓰거나
+  2.5로 뽑고 `upscale`(최대 4k) / `topaz`(최대 2160p)로 올린다.
 
 ## 이미지 모델 라우팅 (Lira, CLI 확인 완료 2026-08-10)
 
