@@ -275,9 +275,34 @@ class ShotlistUpdater:
     STATUS_FAIL = "❌"
     STATUS_RETRY = "🔄"
 
+    # 상태 컬럼을 헤더 이름으로 찾는다. shotlist 컬럼 수는 프로젝트마다 다르다
+    # (5컬럼 구형 / 7컬럼 GenSetup v5.2). 컬럼 수를 가정하면 나머지가 날아간다.
+    STATUS_HEADERS = ("상태", "status")
+
     @staticmethod
-    def read(path: pathlib.Path) -> tuple:
-        """Returns (lines_before_table, header_lines, shot_rows)."""
+    def _split(line: str) -> list:
+        return [p.strip() for p in line.strip().strip("|").split("|")]
+
+    @classmethod
+    def _status_index(cls, headers: list) -> int:
+        """헤더 행에서 상태 컬럼의 위치. 못 찾으면 -1(마지막 컬럼)."""
+        for line in headers:
+            stripped = line.strip()
+            if not stripped.startswith("|") or stripped.startswith("|---"):
+                continue
+            cells = [c.lower() for c in cls._split(line)]
+            for i, c in enumerate(cells):
+                if c in cls.STATUS_HEADERS:
+                    return i
+            break
+        return -1
+
+    @classmethod
+    def read(cls, path: pathlib.Path) -> tuple:
+        """Returns (lines_before_table, header_lines, shot_rows).
+
+        행은 `{"cells": [...]}` 로 원본 컬럼을 **전부** 보존한다.
+        """
         lines = path.read_text(encoding="utf-8").splitlines()
         before, headers, rows = [], [], []
         in_table = False
@@ -286,8 +311,6 @@ class ShotlistUpdater:
             if not in_table:
                 if stripped.startswith("| #") or stripped.startswith("|#"):
                     in_table = True
-                    headers.append(line)
-                elif in_table is False and stripped.startswith("|---"):
                     headers.append(line)
                 else:
                     if not headers:
@@ -298,17 +321,8 @@ class ShotlistUpdater:
                 if stripped.startswith("|---"):
                     headers.append(line)
                 elif stripped.startswith("|"):
-                    parts = [p.strip() for p in stripped.strip("|").split("|")]
-                    if len(parts) >= 5:
-                        rows.append(
-                            {
-                                "shot": parts[0],
-                                "size": parts[1],
-                                "chars": parts[2],
-                                "desc": parts[3],
-                                "status": parts[4],
-                            }
-                        )
+                    cells = cls._split(line)
+                    rows.append({"shot": cells[0], "cells": cells})
                 else:
                     rows.append({"_raw": line})
         return before, headers, rows
@@ -324,9 +338,13 @@ class ShotlistUpdater:
         for r in rows:
             if "_raw" in r:
                 out.append(r["_raw"])
+            elif "cells" in r:
+                out.append("| " + " | ".join(r["cells"]) + " |")
             else:
+                # 구 호출부 호환 — 5컬럼 dict를 직접 만들어 넘기는 경우
                 out.append(
-                    f"| {r['shot']} | {r['size']} | {r['chars']} | {r['desc']} | {r['status']} |"
+                    f"| {r['shot']} | {r.get('size', '')} | {r.get('chars', '')} | "
+                    f"{r.get('desc', '')} | {r.get('status', '')} |"
                 )
         tmp = path.with_suffix(".md.tmp")
         tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
@@ -339,10 +357,23 @@ class ShotlistUpdater:
         if not path.exists():
             return
         before, headers, rows = cls.read(path)
+        idx = cls._status_index(headers)
         for r in rows:
-            if "_raw" not in r and r["shot"].strip() == shot_num.strip():
-                r["status"] = status_emoji
-                break
+            if "_raw" in r or r["shot"].strip() != shot_num.strip():
+                continue
+            cells = r["cells"]
+            if idx == -1:
+                # 상태 헤더가 없다 — 마지막 컬럼이 상태라고 본다
+                if len(cells) < 2:
+                    break
+                cells[-1] = status_emoji
+            else:
+                # 헤더보다 짧은 행은 빈 칸으로 늘린다. 마지막 칸을 덮어쓰면
+                # 그 칸에 있던 실제 데이터가 사라진다
+                while len(cells) <= idx:
+                    cells.append("")
+                cells[idx] = status_emoji
+            break
         cls.write(path, before, headers, rows)
 
     @staticmethod
