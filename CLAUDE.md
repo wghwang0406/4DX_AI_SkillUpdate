@@ -1,7 +1,11 @@
 # Higgsfield Skill Reference
 
-스킬 사용 시 이 파일을 먼저 참조한다. 원본 SKILL.md 파일은 재분석하지 않는다.
 모든 프로젝트에서 자동으로 로드된다 (`~/.claude/CLAUDE.md`).
+
+**이 파일은 색인이지 원문이 아니다.**
+- 스킬이 뭘 하는지·어떤 인자를 받는지 → **여기서 끝낸다.** 원본 SKILL.md를 다시 분석하지 않는다.
+- **프롬프트를 실제로 쓸 때** → 아래 원문 규격 스킬을 **Read한다.**
+  여기 요약 10줄로 원문 90KB를 대체하지 않는다.
 
 ---
 
@@ -17,9 +21,9 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 
 | 스킬 | 무엇 | 누가 읽나 |
 |---|---|---|
-| `Cinedance` | 영상 프롬프트 12섹션 + 대각 화각 옵틱 + 블로킹·물리·조명 락 | GenVideo, GenSetup |
+| `Cinedance` | 영상 프롬프트 12섹션 + 대각 화각 옵틱 + 블로킹·물리·조명 락 | GenVideo, GenSetup, GenConti(첫 프레임 락) |
 | `Lira` | 이미지 프롬프트 4-D + 모델 라우팅 + 시트/장소/소품/편집 템플릿 | GenSetup, GenConti2Img, GenConti, GenT2I, GenImg2Img |
-| `Acting` | 캐릭터 연기 — 마스터 프로필, eye life, states not transitions | GenSetup, GenVideo |
+| `Acting` | 캐릭터 연기 — 마스터 프로필, eye life, states not transitions | GenSetup, GenVideo, GenConti2Img(표정) |
 
 > ⚠️ **이 세 개는 저장소에 포함돼 있지 않다.** 힉스필드 배포본이라 각자 구해서
 > `~/.claude/skills/{Cinedance,Lira,Acting}/SKILL.md` 에 놓아야 한다.
@@ -27,6 +31,23 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 > 없어도 Gen\* 스킬은 **동작한다.** 다만 프롬프트를 쓸 때 참조할 원문이 없어
 > 품질이 떨어진다 — 에러가 안 나는 종류의 저하라 알아채기 어렵다.
 > 아래 "프롬프트 규칙" 10개 항목이 원문에서 뽑은 요약이니 최소한의 대체는 된다.
+
+### 원문끼리 어긋나는 곳 — 중재 (이걸 안 정하면 모델이 그때그때 다르게 쓴다)
+
+Cinedance는 **영상** 규격이고 Lira는 **이미지** 규격이다. 넷은 실제로 서로 반대되는 말을 하므로
+**매체로 가른다.**
+
+| 쟁점 | Cinedance (영상) | Lira (이미지) | 적용 |
+|---|---|---|---|
+| **렌즈 표기** | mm·f값·ISO·브랜드 **금지** (`Cooke S4` 콕 집어) | tech block에 `Cooke S4 at T2.0` 권장 | **영상 = 대각 화각만 / 이미지 = 실제 장비명 허용** |
+| **정체성** | `@TAG` 인라인 앵커 | **Soul ID**가 담당, 프로즈는 보강 | Soul ID는 Soul 계열에만 있다 → **이미지 = Soul ID 우선 / 영상 = 앵커 공식** |
+| **부정문** | "좋은 negative" 목록 있음 | 생성 프롬프트엔 **금지** | **생성 = 금지 / 편집·영상 = 국소만** |
+| **rule of thirds** | 언급 없음 | 모든 프롬프트에 | **이미지만. 영상엔 안 쓴다** (시트는 이미지에서도 예외) |
+
+**왜 이렇게 가르나:** Soul ID는 `text2image_soul_v2`·`soul_cinematic` 계열의 플랫폼
+파라미터라 Kling·Seedance에는 **존재 자체가 없다.** 그래서 영상은 앵커 프로즈 말고
+정체성을 넘길 수단이 없다. 렌즈도 같은 논리다 — 이미지 모델은 장비명을 학습했지만
+Cinedance는 Seedance 파서에서 mm 표기가 역효과라고 경험적으로 못박았다.
 
 ---
 
@@ -106,8 +127,11 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
    (`clean dry skin`, `empty deserted street`). 편집 프롬프트에선 제거가 합법이되
    **채울 것을 함께** 쓴다. 거대 NEGATIVE 블록은 기본 생략하고 국소 인라인 락을 쓴다.
 7. **상수는 한 곳에.** 스타일 앵커 = 프로젝트 / LOCATION MAP = 시퀀스 /
-   외형 설명글·연기 마스터 프로필 = `Character.md`. 프롬프트 본문엔 **@태그만** 쓴다.
+   외형 설명글·연기 마스터 프로필 = `Character.md`.
    한 곳만 고치면 전체 컷에 반영돼야 한다.
+   프롬프트 본문에 뭘 쓰는지는 **매체로 갈린다** (규칙 9와 함께 읽는다):
+   - **이미지** — 시트를 레퍼런스로 붙이므로 본문엔 **@태그만.** 외형 프로즈를 다시 쓰지 않는다
+   - **영상** — 시트를 못 붙이므로(Kling·Seedance에 Soul ID가 없다) 규칙 9의 **앵커 공식 전체**를 쓴다
 8. **비대해지지 않게.** 정밀함이 장황함을 이긴다 (이미지 ≤1500–2000자).
    자연스러운 산문으로 쓰고 키워드 스택(`4k, masterpiece, trending`)은 쓰지 않는다.
    aspect ratio·resolution은 **플랫폼 파라미터** — 프롬프트 텍스트에 넣지 않는다.

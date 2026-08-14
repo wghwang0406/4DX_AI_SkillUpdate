@@ -402,6 +402,63 @@ NO fade-to-black. NO crossfade. NO dissolve. HARD CUTS only.
 **레거시:** 기존 캐시의 `scene_en`/`shot_dir_en`/`vision_en` 3슬롯과 단일 `prompt`도
 runner가 그대로 폴백 처리한다. 새로 쓸 때만 위 슬롯을 쓴다.
 
+## Step 7c-2 — 렌즈 고르기 (CINEDANCE 원문 인라인)
+
+`optics` 슬롯을 채우기 전에 여기서 렌즈를 고른다. 원문이 없어도 이 절만으로 쓸 수 있다.
+
+### 렌즈 결정 트리 — 콘텐츠 타입으로 고른다
+
+| 콘텐츠 | 고를 화각 |
+|---|---|
+| **얼굴 초상** — 환경이 보이는 친밀한 클로즈 | `84°` |
+| | 미디엄 초상 | `29°` |
+| | 감정이 실린 타이트 클로즈업 | `18°` |
+| | 멀리서 몰래 관찰 | `8°` (전경 가림 필수) |
+| **환경 액션** — 자연스러운 다큐 액션 | `47°` |
+| | 넓은 환경 액션 | `84°` |
+| | 대규모 지형 | `107°` |
+| **디테일·매크로** | `29°` 또는 `18°` |
+| **원거리 관찰** — 스포츠 중계·파파라치·야생 | `8°` |
+| | 압축된 감시 초상 | `18°` 또는 `8°` + 전경 가림 + 대기 헤이즈 |
+
+**한 비트에 다른 콘텐츠 클래스를 섞지 않는다.** 얼굴 초상 + 지형 + 매크로를 한 비트에
+넣으면 렌즈가 흔들린다. 필요하면 내부 컷으로 나누고 컷마다 렌즈를 따로 준다.
+
+### 화각 언어 뱅크 — 고른 것을 **그대로 인용**한다
+
+```text
+47°  47° diagonal field of view, standard normal lens character, camera 3 to 5 meters from subject, natural human-eye perspective. Zero obvious distortion, natural face and body proportions, comfortable depth of field, background readable but not exaggerated, classic grounded cinema framing.
+
+84°  84° diagonal field of view, classic wide-angle lens character, camera 1 to 1.5 meters from subject, slight low angle if needed. Wide-angle lens with strong but natural perspective expansion, foreground body presence feels larger and closer, environment remains visible to the frame edges, deep readable spatial context, straight architectural lines stay rectilinear, no fisheye curve.
+
+107° 107° diagonal field of view, wide rectilinear lens character, camera 0.5 to 0.8 meters from foreground subject. Immediate foreground looms large, surrounding environment spreads wide to all frame edges, deep edge-to-edge focus, straight lines remain straight, subtle chromatic aberration near frame edges, no circular vignette, no fisheye bubble.
+
+29°  29° diagonal field of view, short telephoto portrait lens character, camera 4 to 6 meters from subject. Close framing achieved through lens reach, not physical proximity. Subject is razor-sharp, background begins to compress closer behind them, face proportions are flattering and stable, background dissolves into creamy soft bokeh, subject pops clearly from the environment.
+
+18°  18° diagonal field of view, classic telephoto lens character, camera 6 to 8 meters from subject. Strong background compression, distant elements appear stacked closer behind the subject, razor-thin focus isolates the eyes and key facial features, foreground and background melt into soft bokeh, the image feels observed from a distance.
+
+8°   8° diagonal field of view, super-telephoto observation lens character, camera 20 to 25 meters from subject. Extreme background compression, background flattened into a soft color wash, only the subject is sharp, everything else dissolves into creamy bokeh. The image feels like distant paparazzi, wildlife documentary, or sports-broadcast observation. Foreground occlusion is mandatory: blurred foreground objects occupy the lower 30 to 45 percent of frame as oversized dark bokeh shapes, framing the subject from far away.
+```
+
+> **mm·f값·ISO·렌즈 브랜드는 쓰지 않는다.** `85mm` `f/1.4` `ISO 800` `Cooke S4`
+> `Master Prime` `Helios` `K35` `ARRI Alexa` — runner의 린터가 잡아서 경고한다.
+> 단 `35mm film grain` 처럼 **필름 스톡 질감**을 가리키는 건 옵틱이 아니라 스타일이라 허용된다.
+
+## Step 7c-3 — eye life (ACTING 원문 인라인)
+
+`acting_en`에 **눈**이 없으면 인형이 된다. 이름만 쓰지 말고 아래 중 필요한 것을 실제로 쓴다.
+
+| 메커니즘 | 어떻게 쓰나 |
+|---|---|
+| **마이크로 사케이드** | 생각할 때 눈이 파트너의 얼굴 위를 짧게 옮겨 다닌다 — 눈↔입↔손 |
+| **깜빡임 질** | 상태에 묶인다. 긴장=억제된 드문 깜빡임 / 안도=길고 느린 깜빡임 / 충격=깜빡임이 멈춤 |
+| **살아 있는 캐치라이트** | 눈에 광원이 실제로 맺힌다. 고개가 움직이면 캐치라이트도 옮겨간다 |
+| **선택된 정지** | 안 움직이는 게 아니라 **참는** 것. 시선을 붙들고 있다는 게 보여야 한다 |
+| **눈이 말보다 먼저** | 결정이 눈에 먼저 오고 대사가 뒤따른다 |
+| **비트에 반응** | 비트가 바뀌면 시선의 목표가 바뀐다 |
+
+예: `eyes flick from her mouth to her bandaged hand and back, blink suppressed, a single hard swallow before he speaks`
+
 ## Step 7d — 캐시 저장 (분석한 샷만)
 
 `needs_analysis` 샷 각각에 대해 분석이 끝나면 캐시에 저장한다.

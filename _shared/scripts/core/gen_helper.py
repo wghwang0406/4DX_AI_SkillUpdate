@@ -120,7 +120,24 @@ def read_text(path: pathlib.Path) -> str:
 
 
 def char_sheets(root: pathlib.Path) -> list:
-    return [pathlib.Path(p) for p in sorted(glob.glob(str(root / "character" / "*_Character_v*.png")))]
+    """캐릭터 시트를 찾는다.
+
+    GenSetup v5.2 는 `{EP}/character/char/{이름}_Character_sheet_v1.png` 에 쓴다.
+    예전 평면 배치(`character/{이름}_Character_v1.png`)도 아직 쓰이므로 둘 다 본다.
+    (구버전 글로브는 GenSetup 레이아웃과 어긋나 항상 빈 리스트를 돌려줬다 —
+     그런데 프롬프트는 "시트 레퍼런스를 따르라"고 말하고 있었다.)
+    """
+    patterns = [
+        root / "character" / "char" / "*_Character_*_v*.png",   # v5.2 레이아웃
+        root / "*" / "character" / "char" / "*_Character_*_v*.png",  # {EP}/ 하위
+        root / "character" / "*_Character_v*.png",              # 레거시 평면
+    ]
+    hits = []
+    for pat in patterns:
+        hits = sorted(glob.glob(str(pat)))
+        if hits:
+            break
+    return [pathlib.Path(p) for p in hits]
 
 
 def next_version(out_dir: pathlib.Path, seq: str, shot: str, rerun: bool) -> int:
@@ -133,19 +150,47 @@ def next_version(out_dir: pathlib.Path, seq: str, shot: str, rerun: bool) -> int
 
 # ── 프롬프트 합성 ────────────────────────────────────────────────────────────
 
+def english_lines(text: str) -> str:
+    """MD에서 영문 줄만 추린다.
+
+    Sceneprompt/Shotprompt 는 규격상 한국어다(CLAUDE.md). 그런데 최종 프롬프트는
+    영문이어야 한다(Cinedance: "must be written in clear cinematic English").
+    이 헬퍼는 모델 없이 도는 standalone 이라 번역을 못 하므로, 한국어를 통째로
+    실어 보내는 대신 영문 줄만 남긴다. 마크다운 헤더도 뺀다
+    (Lira: 생성 프롬프트에 ALL-CAPS 섹션 헤더를 쓰지 않는다).
+    """
+    out = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith(">") or s.startswith("|"):
+            continue
+        hangul = sum(1 for c in s if "가" <= c <= "힣")
+        if hangul == 0:
+            out.append(s)
+    return "\n".join(out).strip()
+
+
 def build_prompt(root: pathlib.Path, seq: str, shot: str) -> str:
-    scene = read_text(root / "Image" / seq / "Sceneprompt.md")
-    shotp = read_text(root / "Image" / seq / f"{seq}_{shot}" / "Shotprompt.md")
+    """콘티→씬 이미지 i2i 프롬프트.
+
+    원문 규칙 적용:
+      - 화면비는 **CLI 파라미터**로만 넘긴다. 프롬프트 텍스트에 `16:9`를 쓰지 않는다 (Lira)
+      - 키워드 스택(`photorealistic cinematic`) 대신 자연스러운 산문으로 쓴다 (Lira)
+      - 캐릭터 외형은 기술하지 않는다 — 시트 레퍼런스가 담당한다
+      - 레퍼런스 계층: 콘티는 **구도만**, 외형은 시트, 색·아트스타일은 상속하지 않는다
+    """
+    scene = english_lines(read_text(root / "Image" / seq / "Sceneprompt.md"))
+    shotp = english_lines(read_text(root / "Image" / seq / f"{seq}_{shot}" / "Shotprompt.md"))
     parts = []
     if scene:
         parts.append(scene)
     if shotp:
         parts.append(shotp)
-    # 캐릭터 외형은 절대 기술하지 않음 (캐릭터시트 레퍼런스가 담당) — GenConti2Img 규칙
     parts.append(
-        "Use the storyboard image only for composition/framing. "
-        "Match character appearance strictly to the provided character sheet references. "
-        "Photorealistic cinematic, 16:9."
+        "Recreate this storyboard frame as a photographic cinematic still. "
+        "Take shot size, camera angle and composition from the storyboard only. "
+        "Follow the character reference sheets exactly for face, build, hair and wardrobe. "
+        "Clean plate with unmarked surfaces."
     )
     return "\n\n".join(parts)
 

@@ -91,10 +91,13 @@ def list_shots(root: pathlib.Path, seq: str) -> list:
 
 
 def run_higgsfield(model_id: str, conti: pathlib.Path, sheets: list) -> tuple:
+    # 원문 규칙: 화면비는 CLI 파라미터로만 넘긴다(프롬프트 텍스트에 16:9를 쓰지 않는다),
+    # 키워드 스택 대신 산문, 캐릭터 외형은 시트가 담당한다.
     prompt = (
-        "Recreate this storyboard frame as a photorealistic cinematic still. "
-        "Use the storyboard for composition only; match all character appearance "
-        "to the provided character sheet references. 16:9."
+        "Recreate this storyboard frame as a photographic cinematic still. "
+        "Take shot size, camera angle and composition from the storyboard only. "
+        "Follow the character reference sheets exactly for face, build, hair and wardrobe. "
+        "Clean plate with unmarked surfaces."
     )
     cmd = ["higgsfield", "generate", "create", model_id, "--prompt", prompt, "--image", str(conti)]
     for s in sheets:
@@ -142,7 +145,20 @@ def main():
         print(f"ERROR: {root / 'Conti' / seq} 에서 콘티 샷을 찾지 못했습니다.", file=sys.stderr)
         return 1
 
-    sheets = [pathlib.Path(s) for s in sorted(glob.glob(str(root / "character" / "*_Character_v*.png")))]
+    # GenSetup v5.2 는 {EP}/character/char/{이름}_Character_sheet_v1.png 에 쓴다.
+    # 예전 평면 배치도 아직 있으므로 순서대로 본다 — 구버전은 레거시 패턴만 봐서
+    # 항상 빈 리스트였는데, 프롬프트는 "시트를 따르라"고 말하고 있었다.
+    sheets = []
+    for pat in (root / "character" / "char" / "*_Character_*_v*.png",
+                root / "*" / "character" / "char" / "*_Character_*_v*.png",
+                root / "character" / "*_Character_v*.png"):
+        hits = sorted(glob.glob(str(pat)))
+        if hits:
+            sheets = [pathlib.Path(s) for s in hits]
+            break
+    if not sheets:
+        print("⚠️  캐릭터 시트를 찾지 못했습니다 — 외형 일관성이 깨질 수 있습니다",
+              file=sys.stderr, flush=True)
     print(f"대상: {seq} {len(shots)}샷 | model={model_id} | 캐릭터시트 {len(sheets)}장", flush=True)
 
     success = fail = skipped = 0

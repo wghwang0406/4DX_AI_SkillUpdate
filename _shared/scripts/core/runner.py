@@ -226,6 +226,66 @@ def compose_video_prompt(shot: dict, project: dict = None, sequence: dict = None
     return "\n".join(parts)
 
 
+# ── 프롬프트 린터 ────────────────────────────────────────────────────────────
+#
+# 원문(Cinedance / Lira)이 가장 여러 번 강조하는데 아무도 검사하지 않던 것들.
+# 섹션이 "있는지"만 보던 기존 경고와 달리 **내용**을 본다.
+# 막지 않는다 — 경고만 내고 생성은 진행한다.
+
+# Cinedance:581,599-610 — 영상에서 mm·f값·ISO·렌즈 브랜드를 주요 제어로 쓰지 않는다.
+# (이미지는 Lira가 실제 장비명을 권장하므로 이 검사는 **영상 전용**이다.)
+# `35mm film grain` 처럼 **필름 스톡 질감**을 가리키는 mm는 렌즈 지시가 아니므로
+# 뒤에 film/grain/stock 이 오면 잡지 않는다 (Cinedance:1157-1186 스타일 언어는 합법).
+BANNED_OPTICS = re.compile(
+    r"\b(\d{1,3}\s*mm(?![^.]{0,40}\b(?:film|grain|stock)\b)|f/\d+(?:\.\d+)?|T\d(?:\.\d)?"
+    r"|ISO\s*\d+|Cooke|Master\s*Prime|Helios|K35|Laowa|ARRI\s*Alexa|Sigma\s*Art)\b",
+    re.IGNORECASE,
+)
+
+# Cinedance:397-404 — 공간 정확도가 필요한 곳에 약한 단어를 쓰지 않는다.
+VAGUE_SPACE = re.compile(
+    r"\b(near|nearby|beside|around|somewhere|in the area|close to)\b", re.IGNORECASE
+)
+
+# Lira:165-167,367 — 정밀함이 장황함을 이긴다. 영상은 12섹션이라 이미지보다 여유를 준다.
+MAX_PROMPT_CHARS = 4000
+
+
+def lint_prompt(prompt: str, shot: str) -> list:
+    """영상 프롬프트를 원문 규칙에 비춰 검사한다. 경고 문자열 리스트를 반환.
+
+    Cinedance:25 — 최종 프롬프트는 영문이어야 한다.
+    한글이 섞이면 슬롯 번역이 빠진 것이므로 비율로 잡는다.
+    """
+    warn = []
+
+    hits = sorted({m.group(0) for m in BANNED_OPTICS.finditer(prompt)})
+    if hits:
+        warn.append(
+            f"옵틱 금지 토큰 {', '.join(hits)} — 영상은 mm·f값·렌즈 브랜드가 아니라 "
+            f"대각 화각(47°/84°/107°/29°/18°/8°)으로 쓴다"
+        )
+
+    hits = sorted({m.group(0).lower() for m in VAGUE_SPACE.finditer(prompt)})
+    if hits:
+        warn.append(
+            f"모호한 공간 표현 {', '.join(hits)} — `within 1 meter`처럼 측정 가능하게 쓴다"
+        )
+
+    hangul = sum(1 for c in prompt if "가" <= c <= "힣")
+    if hangul > 20:
+        warn.append(
+            f"한글 {hangul}자 — 최종 프롬프트는 영문이어야 한다 (슬롯 번역 누락)"
+        )
+
+    if len(prompt) > MAX_PROMPT_CHARS:
+        warn.append(
+            f"프롬프트 {len(prompt)}자 — {MAX_PROMPT_CHARS}자 초과. 길다고 좋은 게 아니다"
+        )
+
+    return warn
+
+
 # 한 샷에 붙일 수 있는 이미지 총량 (Seedance 2.0 제약, start/end 포함).
 # `higgsfield model get seedance_2_0` → "at most 9 image references are allowed
 # (counting start_image and end_image)"
@@ -530,17 +590,24 @@ def run_genvideo(config: dict, ep: str, seq: str, args) -> int:
             continue
 
         # 품질 경고 — 막지 않고 진행
+        # 섹션 누락 검사는 12섹션 형식일 때만 의미가 있다.
         if "ACTION TIMING" in prompt:
             for label, why in (
                 ("LOCATION MAP", "공간 지도 없음 — 컷이 바뀌면 인물이 순간이동할 수 있음"),
                 ("FIRST FRAME AND SPATIAL BLOCKING", "첫 프레임 점유/블로킹 없음 — 빈 프레임으로 시작할 수 있음"),
                 ("OPTICS", "옵틱 없음 — 렌즈가 중간값으로 흘러갈 수 있음"),
+                ("STYLE", "스타일 앵커 없음 — 프로젝트 룩이 샷마다 흔들릴 수 있음"),
             ):
                 if label not in prompt:
                     print(f"⚠️  Shot {shot}: {why}", file=sys.stderr, flush=True)
         elif not (s.get("shot_dir_en") or "").strip() and (s.get("scene_en") or s.get("vision_en")):
             # 레거시 3슬롯 경로
             print(f"⚠️  Shot {shot}: shot_dir_en(모션 디렉션) 없음 — 영상이 밋밋할 수 있음", file=sys.stderr, flush=True)
+
+        # 내용 검사는 형식과 무관하게 항상 돈다 — 레거시 경로가 검사를 통째로
+        # 건너뛰던 문제를 막는다.
+        for why in lint_prompt(prompt, shot):
+            print(f"⚠️  Shot {shot}: {why}", file=sys.stderr, flush=True)
 
         # 디스크에서 키프레임(-N, 순서)과 레퍼런스(_ref/, 무순서)를 직접 찾는다.
         keyframes, refs = find_shot_media(ep, seq, shot)
