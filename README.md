@@ -23,6 +23,33 @@ higgsfield auth login
 
 이미 `~/.claude/skills`를 쓰고 있으면 클론 대신 그 안에서 `git pull` 한다.
 
+## 업데이트 — 2단계다. 1단계만 하면 반쪽이다
+
+```bash
+# 1) 스킬 본체
+cd ~/.claude/skills && git pull
+cp ~/.claude/skills/CLAUDE.md ~/.claude/CLAUDE.md
+```
+
+여기까지 하면 `SKILL.md`·`CLAUDE.md`·원문 규격 3종은 최신이 된다.
+**파이썬 툴킷은 아직 옛날 것이다.**
+
+`GenSetup`이 프로젝트 루트에 툴킷을 `cp -n`으로 복사하는데, `-n`은 **이미 있으면
+덮지 않는다.** 프로젝트마다 처음 복사된 시점의 사본이 얼어붙어 있고, `git pull`은
+그 사본을 건드리지 않는다. 버그 수정이 기존 프로젝트에 안 들어가는 이유다.
+
+```bash
+# 2) 프로젝트별 사본 갱신 — config.md가 있는 폴더에서
+SHARED=~/.claude/skills/_shared/scripts/core
+cp "$SHARED"/{runner,cache,models}.py .
+mkdir -p scripts && cp "$SHARED"/{gen_helper,genconti2img_minimal}.py scripts/
+```
+
+- 프로젝트를 여러 개 쓰면 **폴더마다** 돌린다.
+- `.cache.json`·MD·이미지는 건드리지 않는다. 덮이는 건 툴킷 `.py` 5개뿐이다.
+- 세 파일은 서로 맞물려 있으니 **같이** 복사한다 (`runner`만 새 것이면 import가 어긋난다).
+- 프로젝트 사본을 손으로 고쳐 뒀다면 그 수정은 사라진다. 먼저 `diff`로 확인한다.
+
 동작 확인 — 모델 표가 현재 Higgsfield CLI와 맞는지 본다 (크레딧 0):
 
 ```bash
