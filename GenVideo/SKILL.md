@@ -24,11 +24,11 @@ Image-to-video generation skill. Handles single shot or batch. Default model: Kl
 
 | 무엇을 쓸 때 | 읽을 파일 |
 |---|---|
-| 12섹션 전체, 옵틱·블로킹·물리·조명 락 | `~/.claude/skills/Cinedance/SKILL.md` **(별도 설치)** |
-| ACTION TIMING 안의 연기, Voice | `~/.claude/skills/Acting/SKILL.md` **(별도 설치)** |
+| 12섹션 전체, 옵틱·블로킹·물리·조명 락 | `~/.claude/skills/Cinedance/SKILL.md` |
+| ACTION TIMING 안의 연기, Voice | `~/.claude/skills/Acting/SKILL.md` |
 
-> 두 파일은 저장소에 포함돼 있지 않다 (힉스필드 배포본). 없으면 이 스킬은 그대로 돌지만
-> `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**만 근거로 슬롯을 채우게 된다.
+> 두 파일은 이 저장소에 함께 들어 있다 (출처: Higgsfield). 지웠거나 못 찾으면 이 스킬은
+> 그대로 돌지만 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**만 근거로 슬롯을 채우게 된다.
 
 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 

@@ -30,10 +30,10 @@ python3 ~/.claude/skills/_shared/scripts/core/models.py --check
 # → "CAPS가 CLI와 일치합니다."
 ```
 
-## ⚠️ 별도로 받아야 하는 것 — 원문 규격 스킬 3종
+## 원문 규격 스킬 3종 — 함께 들어 있다
 
-`Cinedance` · `Lira` · `Acting` 세 개는 **이 저장소에 없다.** 힉스필드에서 배포한
-프롬프트 규격 원문이라 재배포하지 않는다. 각자 구해서 이 위치에 놓는다:
+`Cinedance` · `Lira` · `Acting`은 Gen* 스킬이 프롬프트를 쓸 때 **읽는 규격 원문**이다.
+힉스필드가 공개한 배포본을 무손실로 담았다 (출처는 [ATTRIBUTION.md](ATTRIBUTION.md)).
 
 ```
 ~/.claude/skills/Cinedance/SKILL.md    영상 프롬프트 12섹션 규격
@@ -41,7 +41,7 @@ python3 ~/.claude/skills/_shared/scripts/core/models.py --check
 ~/.claude/skills/Acting/SKILL.md       캐릭터 연기 작성 규격
 ```
 
-**없어도 스킬은 전부 동작한다.** 다만 프롬프트를 쓸 때 참조할 원문이 없어 품질이
+**지워도 스킬은 전부 동작한다.** 다만 프롬프트를 쓸 때 참조할 원문이 없어 품질이
 떨어진다 — 에러가 안 나는 종류의 저하라 알아채기 어렵다. `CLAUDE.md`의
 **프롬프트 규칙 10개**가 세 원문에서 뽑은 요약이라 최소한의 대체는 된다.
 
@@ -119,5 +119,6 @@ project_title: 작품명
 
 ## 라이선스
 
-스킬 정의와 파이썬 툴킷은 자유롭게 쓰고 고쳐도 된다.
-별도 설치하는 원문 규격 스킬 3종은 여기에 포함되지 않으며 각자의 배포 조건을 따른다.
+`Gen*` 스킬 정의와 `_shared/` 파이썬 툴킷은 자유롭게 쓰고 고쳐도 된다.
+`Cinedance` · `Lira` · `Acting`은 **내 저작물이 아니다** — 힉스필드 배포본을 그대로
+담은 것이라 그쪽 조건을 따른다. [ATTRIBUTION.md](ATTRIBUTION.md) 참고.

@@ -24,7 +24,7 @@ Reference image can be provided by dragging into chat OR by typing the file path
 (특히 *Surgical-edit template*, *Model routing*).
 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 
-> Lira는 저장소에 없다 (힉스필드 배포본, 별도 설치). 없으면 위 프롬프트 규칙 10개를
+> Lira는 이 저장소에 함께 들어 있다 (출처: Higgsfield). 못 찾으면 위 프롬프트 규칙 10개를
 > 근거로 진행한다 — 중단하지 않는다.
 
 ## Step 1 — Parse Arguments

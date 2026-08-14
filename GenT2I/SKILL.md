@@ -20,7 +20,7 @@ Text-to-image generation using Higgsfield. The first argument is the model short
 
 프롬프트를 확장하기 전에 `~/.claude/skills/Lira/SKILL.md`를 Read한다.
 
-> 이 파일은 저장소에 없다 (힉스필드 배포본, 별도 설치). 없으면 `~/.claude/CLAUDE.md`의
+> 이 파일은 이 저장소에 함께 들어 있다 (출처: Higgsfield). 못 찾으면 `~/.claude/CLAUDE.md`의
 > **프롬프트 규칙 10개**를 근거로 진행한다 — 중단하지 않는다.
 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 
