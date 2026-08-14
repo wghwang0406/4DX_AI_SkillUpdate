@@ -137,7 +137,7 @@ CAPS = {
     },
     "seedance_2_5": {
         "kind": "video", "quality": None,
-        "resolution": ("480p", "720p"),                    # 1080p·4k 없음 — 업스케일로 올린다
+        "resolution": ("480p", "720p", "1080p"),           # 4k 없음 — 필요하면 업스케일로 올린다
         "aspect": ("auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
         "refs": True, "max_images": 30, "folder": False,
         # start/end 이미지는 mode omni_reference 에서만 허용된다
@@ -161,7 +161,7 @@ CAPS = {
     },
     "cinematic_studio_video_4_0": {
         "kind": "video", "quality": None,
-        "resolution": ("480p", "720p"),                    # seedance_2_5 와 같은 엔진
+        "resolution": ("480p", "720p", "1080p"),           # seedance_2_5 와 같은 엔진
         "aspect": ("auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
         "refs": True, "max_images": 30, "folder": False,
         "needs_omni_mode": True,

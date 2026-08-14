@@ -75,7 +75,7 @@ Cinedance는 Seedance 파서에서 mm 표기가 역효과라고 경험적으로 
 
 - **21:9가 없는 모델:** `gpt_image_2`, `text2image_soul_v2`, `kling3_0`. 와이드가 필요하면 각각
   `nano_banana_2`·`soul_cinematic`·`seedance_2_0`으로 간다.
-- **`seedance_2_5`는 720p 상한**이다 (2.0은 4k까지). 고해상도가 필요하면 2.0을 쓰거나
+- **`seedance_2_5`는 1080p 상한**이다 (2.0은 4k까지). 고해상도가 필요하면 2.0을 쓰거나
   2.5로 뽑고 `upscale`(최대 4k) / `topaz`(최대 2160p)로 올린다.
 
 ## 이미지 모델 라우팅 (Lira, CLI 확인 완료 2026-08-10)
