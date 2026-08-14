@@ -107,10 +107,15 @@ def expand_shot_spec(spec: str, ep: str, seq: str, workflow: str) -> list:
         img_dir = ROOT / ep / "Image" / seq
 
     if spec == "all":
-        files = glob.glob(str(img_dir / "[0-9]*.png"))
+        # 파일명은 두 형태를 다 쓴다: "0010_v1.png" 와 "{SEQ}_0010_v1.png".
+        # 접두사 있는 쪽만 쓰는 프로젝트에서 all이 빈 목록을 내던 문제 때문에 둘 다 본다.
+        files = glob.glob(str(img_dir / "[0-9]*.png")) + glob.glob(str(img_dir / f"{seq}_[0-9]*.png"))
         nums = set()
         for f in files:
-            m = re.match(r"(\d{4})", pathlib.Path(f).name)
+            name = pathlib.Path(f).name
+            if name.startswith(f"{seq}_"):
+                name = name[len(seq) + 1:]
+            m = re.match(r"(\d{4})", name)
             if m:
                 nums.add(m.group(1))
         return sorted(nums)
@@ -150,13 +155,69 @@ def next_version(ep: str, seq: str, shot: str, ext: str) -> int:
 
 # ── Higgsfield 커맨드 빌더 ───────────────────────────────────────────────────
 
-def compose_video_prompt(shot: dict) -> str:
-    """캐시 샷 dict에서 영상 프롬프트를 '모션 우선' 구조로 조립.
+# CINEDANCE V4 최종 프롬프트 아키텍처 (섹션 순서 고정).
+# (캐시 키, 출력 라벨) — 값이 빈 섹션은 출력에서 생략한다.
+CINEDANCE_SECTIONS = [
+    ("scene_context", "SCENE CONTEXT"),
+    ("active_refs", "ACTIVE REFERENCES"),
+    ("location_map", "LOCATION MAP"),
+    ("first_frame", "FIRST FRAME AND SPATIAL BLOCKING"),
+    ("format_mode", "FORMAT MODE"),
+    ("optics", "OPTICS"),
+    ("camera", "CAMERA"),
+    ("action_timing", "ACTION TIMING"),
+    ("physics", "PHYSICS"),
+    ("lighting", "LIGHTING"),
+    ("style", "STYLE"),
+    ("audio", "AUDIO"),
+    ("positive_constraints", "POSITIVE CONSTRAINTS"),
+]
 
-    슬롯: scene_en(씬 무드/조명) / shot_dir_en(카메라·모션, 핵심) / vision_en(동작).
-    i2v 특성상 정적 재묘사는 이미지가 담당하므로 모션·디렉션을 앞세운다.
-    셋 다 없으면 레거시 단일 prompt로 폴백 (기존 캐시/genconti2img 호환).
+
+def compose_video_prompt(shot: dict, project: dict = None, sequence: dict = None) -> str:
+    """캐시에서 영상 프롬프트를 CINEDANCE 12섹션 순서로 조립.
+
+    상수는 샷에 복붙하지 않고 상위 레벨에서 끌어온다:
+      - STYLE       ← 프로젝트 `style_en`        (한 곳 고치면 전 샷 반영)
+      - LOCATION MAP← 시퀀스 `location_map_en`   (장면당 한 번, 모든 컷에 붙음)
+    샷이 같은 이름의 값을 직접 갖고 있으면 그쪽이 우선한다.
+
+    ACTING은 별도 섹션을 만들지 않고 CINEDANCE 구조 안에 넣는다:
+      - `acting_en` → ACTION TIMING 본문 뒤에 이어붙임 (연기 = 행동 레이어)
+      - `voice_en`  → AUDIO 본문 뒤에 verbatim 으로 이어붙임
+
+    12섹션이 하나도 없으면 레거시 3슬롯(scene_en/shot_dir_en/vision_en)으로,
+    그것도 없으면 레거시 단일 `prompt`로 폴백한다 (기존 캐시/genconti2img 호환).
     """
+    project = project or {}
+    sequence = sequence or {}
+
+    values = {}
+    for key, _label in CINEDANCE_SECTIONS:
+        values[key] = (shot.get(key) or "").strip()
+
+    # 상위 레벨 상수 주입 (샷이 직접 갖고 있으면 샷 우선)
+    if not values["style"]:
+        values["style"] = (project.get("style_en") or "").strip()
+    if not values["location_map"]:
+        values["location_map"] = (sequence.get("location_map_en") or "").strip()
+
+    # ACTING 병합
+    acting = (shot.get("acting_en") or "").strip()
+    if acting:
+        values["action_timing"] = "\n".join(x for x in (values["action_timing"], acting) if x)
+    voice = (shot.get("voice_en") or "").strip()
+    if voice:
+        values["audio"] = "\n".join(x for x in (values["audio"], voice) if x)
+
+    if any(values.values()):
+        parts = []
+        for key, label in CINEDANCE_SECTIONS:
+            if values[key]:
+                parts.append(f"{label}\n{values[key]}")
+        return "\n\n".join(parts)
+
+    # ── 레거시 폴백 ──────────────────────────────────────────────────────────
     scene = (shot.get("scene_en") or "").strip()
     shot_dir = (shot.get("shot_dir_en") or "").strip()
     vision = (shot.get("vision_en") or "").strip()
@@ -174,13 +235,59 @@ def compose_video_prompt(shot: dict) -> str:
     return "\n".join(parts)
 
 
-def build_genvideo_cmd(
-    model: str, prompt: str, image_mode: str, image_files: list, multi_shot: bool
-) -> list:
-    abs_files = [
-        str(f) if pathlib.Path(f).is_absolute() else str(ROOT / f)
-        for f in image_files
-    ]
+# 한 샷에 붙일 수 있는 이미지 총량 (Seedance 2.0 제약, start/end 포함).
+# `higgsfield model get seedance_2_0` → "at most 9 image references are allowed
+# (counting start_image and end_image)"
+MAX_IMAGES_SEEDANCE = 9
+REF_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def find_shot_media(ep: str, seq: str, shot: str) -> tuple:
+    """샷의 (keyframes, refs)를 ROOT 기준 상대경로 리스트로 반환.
+
+    keyframes — **순서 있는** 키프레임. `{SEQ}_{SHOT}-N_v*.png` 의 N이 시간 순서다.
+                개수 제한 없음(-1, -2, -3 …). 하나도 없으면 `{SEQ}_{SHOT}_v*.png` 한 장.
+    refs      — **순서 없는** 레퍼런스. `{SEQ}_{SHOT}_ref/` 폴더 안의 이미지 전부.
+                이 폴더는 무조건 레퍼런스이며 키프레임이 되는 일이 없다.
+
+    같은 N에 여러 버전이 있으면 `_v` 최대본을 쓴다(_newest 재사용).
+    """
+    d = ROOT / ep / "Image" / seq
+
+    by_index = {}
+    for f in glob.glob(str(d / f"{seq}_{shot}-*_v*.png")):
+        m = re.fullmatch(rf"{re.escape(seq)}_{re.escape(shot)}-(\d+)_v(\d+)\.png",
+                         pathlib.Path(f).name)
+        if m:
+            by_index.setdefault(int(m.group(1)), []).append(f)
+    keyframes = [_newest(by_index[n]) for n in sorted(by_index)]
+
+    if not keyframes:
+        single = _newest(glob.glob(str(d / f"{seq}_{shot}_v*.png")))
+        keyframes = [single] if single else []
+
+    refs = sorted(
+        p for p in glob.glob(str(d / f"{seq}_{shot}_ref" / "*"))
+        if pathlib.Path(p).suffix.lower() in REF_EXTS
+    )
+
+    rel = lambda p: str(pathlib.Path(p).relative_to(ROOT))
+    return [rel(k) for k in keyframes], [rel(r) for r in refs]
+
+
+def build_genvideo_cmd(model: str, prompt: str, keyframes: list, refs: list) -> list:
+    """키프레임(순서) + 레퍼런스(무순서)를 CLI 미디어 플래그로 조립.
+
+    키프레임 1장  → --start-image
+    키프레임 2장  → --start-image / --end-image
+    키프레임 3장+ → --start-image / 중간은 --image / --end-image
+    refs          → 전부 --image (키프레임 뒤에 붙음)
+
+    Kling 3.0은 파라미터에 image_references가 없어 start/end만 받는다.
+    """
+    def abs_path(p):
+        return str(p) if pathlib.Path(p).is_absolute() else str(ROOT / p)
+
     cmd = [
         "higgsfield", "generate", "create", model,
         "--prompt", prompt,
@@ -190,13 +297,123 @@ def build_genvideo_cmd(
     ]
     if model == "kling3_0":
         cmd += ["--mode", "pro"]
-    if image_mode == "pair" and len(abs_files) >= 2:
-        cmd += ["--start-image", abs_files[0], "--end-image", abs_files[1]]
+
+    k = [abs_path(x) for x in keyframes]
+    if not k:
+        return cmd
+
+    if len(k) == 1:
+        cmd += ["--start-image", k[0]]
     else:
-        cmd += ["--start-image", abs_files[0]]
-        if multi_shot and model != "seedance_2_0":
-            cmd += ["--multi_shots", "true", "--multi_shot_mode", "auto"]
+        cmd += ["--start-image", k[0]]
+        for mid in k[1:-1]:
+            cmd += ["--image", mid]
+        cmd += ["--end-image", k[-1]]
+
+    for r in refs:
+        cmd += ["--image", abs_path(r)]
     return cmd
+
+
+def plan_shot_media(model: str, keyframes: list, refs: list, forced_model: bool = False):
+    """모델 제약에 맞춰 (model, keyframes, refs, 경고목록)을 정리한다.
+
+    - Kling은 start/end 2장만 받는다. 키프레임 3장 이상이면 Seedance로 바꾼다
+      (사용자가 모델을 명시했으면 바꾸지 않고 첫/끝만 쓴다).
+    - Kling은 image_references 파라미터가 없어 refs를 못 받는다.
+    - Seedance는 start/end 포함 이미지 총 9장까지.
+    """
+    warn = []
+    kf, rf = list(keyframes), list(refs)
+
+    if model == "kling3_0" and len(kf) > 2:
+        if forced_model:
+            warn.append(f"키프레임 {len(kf)}장 중 첫/끝 2장만 사용됩니다 (Kling은 중간 키프레임을 받지 않음)")
+            kf = [kf[0], kf[-1]]
+        else:
+            model = "seedance_2_0"
+            warn.append(f"키프레임 {len(kf)}장 — Kling은 2장까지라 Seedance 2.0으로 전환합니다")
+
+    if model == "kling3_0" and rf:
+        warn.append(f"레퍼런스 {len(rf)}장은 Kling이 받지 않아 제외됩니다 (Seedance를 쓰세요)")
+        rf = []
+
+    total = len(kf) + len(rf)
+    if total > MAX_IMAGES_SEEDANCE:
+        drop = total - MAX_IMAGES_SEEDANCE
+        rf = rf[: max(0, len(rf) - drop)]
+        warn.append(f"이미지 총 {total}장 — 상한 {MAX_IMAGES_SEEDANCE}장이라 레퍼런스 {drop}장을 뺐습니다")
+
+    return model, kf, rf, warn
+
+
+# ── 에셋 뷰 선택 ─────────────────────────────────────────────────────────────
+# 샷 사이즈에 맞는 레퍼런스 뷰를 고른다. 클로즈업에 와이드 배경을 물리면
+# 공간이 안 맞고, 원경에 얼굴 클로즈업을 물리면 정체성이 흐려진다.
+SHOT_SIZE_VIEWS = {
+    "ews": ("wide", "front"), "els": ("wide", "front"), "ls": ("wide", "front"),
+    "ws": ("wide", "front"), "establishing": ("wide", "front"),
+    "mls": ("34", "front"), "mws": ("34", "front"), "ms": ("34", "front"),
+    "ots": ("34", "front"), "2s": ("34", "front"), "medium": ("34", "front"),
+    "cu": ("detail", "face"), "ecu": ("detail", "face"), "bcu": ("detail", "face"),
+    "mcu": ("detail", "face"), "closeup": ("detail", "face"),
+}
+DEFAULT_VIEWS = ("wide", "front")
+
+
+def views_for_shot_size(shot_size: str) -> tuple:
+    """샷 사이즈 문자열 → (장소 뷰, 인물 뷰). 모르면 wide/front."""
+    key = (shot_size or "").strip().lower().replace("-", "").replace(" ", "").replace(".", "")
+    if key in SHOT_SIZE_VIEWS:
+        return SHOT_SIZE_VIEWS[key]
+    for k, v in SHOT_SIZE_VIEWS.items():          # "extreme close-up" 같은 서술형 대응
+        if k in key:
+            return v
+    return DEFAULT_VIEWS
+
+
+def _newest(paths: list) -> str:
+    """_v{N} 버전이 가장 높은 파일 하나. 없으면 빈 문자열."""
+    if not paths:
+        return ""
+    def ver(p):
+        m = re.search(r"_v(\d+)\.", pathlib.Path(p).name)
+        return int(m.group(1)) if m else 0
+    return sorted(paths, key=lambda p: (ver(p), p))[-1]
+
+
+# kind → (하위폴더, 파일 접미사, 뷰가 없을 때 쓰는 대체 뷰)
+ASSET_KINDS = {
+    "char": ("char", "Character", ["sheet", "front"]),
+    "loc": ("loc", "Location", ["wide"]),
+    "prop": ("prop", "Prop", ["top", "34"]),
+}
+
+
+def find_asset(ep: str, kind: str, name: str, view: str = "") -> str:
+    """에셋 레퍼런스 경로를 ROOT 기준 상대경로로 반환. 없으면 빈 문자열.
+
+    탐색 순서: 하위폴더의 요청 뷰 → 하위폴더의 대체 뷰 → 하위폴더의 아무 뷰
+              → 기존 flat 경로 ({EP}/character/{name}_Character*.png)
+    마지막 단계가 있어서 하위폴더로 옮기지 않은 기존 프로젝트도 그대로 동작한다.
+    """
+    if not name or name in ("—", "-", "", "없음"):
+        return ""
+    sub, suffix, fallback_views = ASSET_KINDS.get(kind, (None, None, []))
+    if not sub:
+        return ""
+    base = ROOT / ep / "character"
+    tries = []
+    for v in ([view] if view else []) + fallback_views:
+        if v:
+            tries.append(str(base / sub / f"{name}_{suffix}_{v}_v*.png"))
+    tries.append(str(base / sub / f"{name}_{suffix}*.png"))
+    tries.append(str(base / f"{name}_{suffix}*.png"))     # 레거시 flat
+    for pattern in tries:
+        hit = _newest(glob.glob(pattern))
+        if hit:
+            return str(pathlib.Path(hit).relative_to(ROOT))
+    return ""
 
 
 def build_genconti2img_cmd(
@@ -278,7 +495,9 @@ def run_job(cmd: list) -> tuple:
 
 def run_genvideo(config: dict, ep: str, seq: str, args) -> int:
     cache = CacheManager()
-    model = MODEL_MAP.get(args.model, args.model)
+    args.model_explicit = args.model is not None
+    requested = args.model or "kling3_0"
+    model = MODEL_MAP.get(requested, requested)
     shots = expand_shot_spec(args.shot_spec, ep, seq, "genvideo")
 
     if not shots:
@@ -298,34 +517,55 @@ def run_genvideo(config: dict, ep: str, seq: str, args) -> int:
             skipped += 1
             continue
 
-        prompt = compose_video_prompt(s) if s else ""
+        prompt = (
+            compose_video_prompt(s, cache.get_project(), cache.get_sequence(ep, seq))
+            if s
+            else ""
+        )
         if not prompt:
             print(f"SHOT_FAIL:{shot}:캐시에 프롬프트 없음 — /GenVideo로 먼저 분석 실행 필요", flush=True)
             fail += 1
             continue
 
-        # 모션 디렉션이 비면 i2v가 밋밋해짐 — 경고만 하고 진행
-        if not (s.get("shot_dir_en") or "").strip() and (s.get("scene_en") or s.get("vision_en")):
+        # 품질 경고 — 막지 않고 진행
+        if "ACTION TIMING" in prompt:
+            for label, why in (
+                ("LOCATION MAP", "공간 지도 없음 — 컷이 바뀌면 인물이 순간이동할 수 있음"),
+                ("FIRST FRAME AND SPATIAL BLOCKING", "첫 프레임 점유/블로킹 없음 — 빈 프레임으로 시작할 수 있음"),
+                ("OPTICS", "옵틱 없음 — 렌즈가 중간값으로 흘러갈 수 있음"),
+            ):
+                if label not in prompt:
+                    print(f"⚠️  Shot {shot}: {why}", file=sys.stderr, flush=True)
+        elif not (s.get("shot_dir_en") or "").strip() and (s.get("scene_en") or s.get("vision_en")):
+            # 레거시 3슬롯 경로
             print(f"⚠️  Shot {shot}: shot_dir_en(모션 디렉션) 없음 — 영상이 밋밋할 수 있음", file=sys.stderr, flush=True)
 
-        image_mode = s.get("image_mode", "single")
-        image_files = s.get("image_files", [])
-        multi_shot = s.get("multi_shot", False)
+        # 디스크에서 키프레임(-N, 순서)과 레퍼런스(_ref/, 무순서)를 직접 찾는다.
+        keyframes, refs = find_shot_media(ep, seq, shot)
 
-        if not image_files:
-            print(f"SHOT_FAIL:{shot}:캐시에 image_files 없음", flush=True)
+        # 하위호환: 디스크에서 못 찾으면 기존 캐시의 image_files를 키프레임으로 쓴다.
+        if not keyframes:
+            keyframes = s.get("image_files", []) or []
+        if not keyframes:
+            print(f"SHOT_FAIL:{shot}:이미지를 찾을 수 없음 ({ep}/Image/{seq}/)", flush=True)
             fail += 1
             continue
 
+        shot_model, keyframes, refs, warns = plan_shot_media(
+            model, keyframes, refs, forced_model=args.model_explicit
+        )
+        for w in warns:
+            print(f"⚠️  Shot {shot}: {w}", file=sys.stderr, flush=True)
+
         if args.dry_run:
             print(
-                f"SHOT_DRY:{shot}:[{image_mode}] model={model} "
-                f"prompt_len={len(prompt)} multi={multi_shot}",
+                f"SHOT_DRY:{shot}:model={shot_model} kf={len(keyframes)} refs={len(refs)} "
+                f"prompt_len={len(prompt)} files={keyframes + refs}",
                 flush=True,
             )
             continue
 
-        cmd = build_genvideo_cmd(model, prompt, image_mode, image_files, multi_shot)
+        cmd = build_genvideo_cmd(shot_model, prompt, keyframes, refs)
         url, job_id, err = run_job(cmd)
 
         if err:
@@ -376,22 +616,37 @@ def run_genconti2img(config: dict, ep: str, seq: str, args) -> int:
             fail += 1
             continue
 
-        background = s.get("background_file", f"{ep}/Image/{seq}/Background.png")
         conti_image = s.get("conti_image", f"{ep}/Conti/{seq}/{shot}_v1.png")
         characters = s.get("characters", [])
 
-        # 캐릭터 시트 파일 탐색
+        # 샷 사이즈에 맞는 뷰 선택 (뒷모습 샷이면 인물 뷰를 back으로 덮어씀)
+        loc_view, char_view = views_for_shot_size(s.get("shot_size", ""))
+        char_view = s.get("char_view") or char_view
+
+        # 배경: 장소 에셋의 뷰 → 없으면 기존 Background.png 경로로 폴백
+        background = find_asset(ep, "loc", s.get("location", ""), loc_view)
+        if not background:
+            background = s.get("background_file", f"{ep}/Image/{seq}/Background.png")
+
+        # 캐릭터 시트 파일 탐색 (샷 사이즈에 맞는 뷰 우선)
         char_images = []
         for char_name in characters:
-            if char_name in ("—", "", "-", "없음"):
-                continue
-            matches = glob.glob(str(ROOT / ep / "character" / f"{char_name}_Character*.png"))
-            if matches:
-                char_images.append(str(pathlib.Path(matches[0]).relative_to(ROOT)))
+            hit = find_asset(ep, "char", char_name, char_view)
+            if hit:
+                char_images.append(hit)
+
+        # 소품 레퍼런스 (있으면)
+        prop_images = []
+        for prop_name in s.get("props", []):
+            hit = find_asset(ep, "prop", prop_name, s.get("prop_view", ""))
+            if hit:
+                prop_images.append(hit)
+        char_images += prop_images
 
         if args.dry_run:
             print(
-                f"SHOT_DRY:{shot}:model={model} bg={background} "
+                f"SHOT_DRY:{shot}:model={model} size={s.get('shot_size','?')} "
+                f"views=loc:{loc_view}/char:{char_view} bg={background} "
                 f"conti={conti_image} chars={char_images}",
                 flush=True,
             )
@@ -508,6 +763,10 @@ def cmd_write_shot(config: dict, ep: str, seq: str, args) -> int:
         "shotprompt_sig": cache.file_sig(shotprompt),
         "character_sig": cache.file_sig(character),
     }
+    # LOCATION MAP은 장면(시퀀스) 상수 — 샷마다 복붙하지 않고 여기 한 곳에 둔다.
+    location_map_en = data.pop("location_map_en", "")
+    if location_map_en:
+        seq_sig_data["location_map_en"] = location_map_en
     cache.set_sequence(ep, seq, seq_sig_data)
 
     # 프로젝트 sig (없으면 스킵)
@@ -519,6 +778,12 @@ def cmd_write_shot(config: dict, ep: str, seq: str, args) -> int:
             "projectprompt_text": "",
         }
         cache._data["project"] = proj_data
+        cache._save()
+
+    # 스타일 앵커는 프로젝트 상수 — 샷마다 복붙하지 않고 여기 한 곳에 둔다.
+    style_en = data.pop("style_en", "")
+    if style_en:
+        cache._data.setdefault("project", {})["style_en"] = style_en
         cache._save()
 
     # 샷 데이터 저장
@@ -580,7 +845,9 @@ def parse_args():
     gv = sub.add_parser("genvideo", help="영상 생성 (i2v)")
     gv.add_argument("seq_id", help="시퀀스 ID (예: S41)")
     gv.add_argument("shot_spec", help="샷 스펙 (예: 0010 | 0010-0030 | all)")
-    gv.add_argument("--model", default="kling3_0", help="모델 (kling3_0 | seedance_2_0)")
+    # default=None → 사용자가 직접 지정했는지 구분한다.
+    # 명시했으면 키프레임이 많아도 모델을 바꾸지 않고 지시를 따른다.
+    gv.add_argument("--model", default=None, help="모델 (kling3_0 기본 | seedance_2_0)")
     gv.add_argument("--force", action="store_true", help="완료 샷도 재생성")
     gv.add_argument("--dry-run", action="store_true", help="API 호출 없이 확인만")
 

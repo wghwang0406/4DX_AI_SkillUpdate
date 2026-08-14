@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.2.0
 name: GenConti
 description: |
   PDF 시나리오에서 특정 시퀀스를 추출해 콘티(storyboard) 이미지를 배치 생성한다.
@@ -8,7 +8,7 @@ description: |
   Characters.md가 있으면 캐릭터 묘사에 활용한다.
   Use when: "GenConti", "시나리오 콘티 만들어", "씬 샷 분해", "PDF 콘티 생성", "storyboard from screenplay".
 argument-hint: "<PDF_PATH> <SEQUENCE_ID> [sketch|cinematic]"
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash, Read, Write, Skill
 ---
 
 # GenConti
@@ -16,6 +16,12 @@ allowed-tools: Bash, Read, Write
 PDF 시나리오 → 샷 분해 → 러프 콘티 이미지 배치 생성 스킬.
 
 **최종 이미지 = 샷 사이즈/앵글 + 장소/분위기 + 캐릭터 묘사 + 스타일**
+
+## 원문 규격 참조
+
+프롬프트를 쓰기 전에 `~/.claude/skills/Lira/SKILL.md`를 Read한다.
+표정·동작을 쓸 때는 `~/.claude/skills/Acting/SKILL.md`.
+`~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 
 ## Step 0 — config.md 읽기
 
@@ -207,13 +213,22 @@ URL 형식은 반드시 `<https://...>` 꺾쇠 형식 — VS Code 에디터에�
 | POV | 캐릭터 시점 |
 | Insert | 중요 소품 |
 
-분해 결과를 테이블로 표시 후 **사용자 승인을 받은 뒤** 생성 진행:
+**첫 프레임 점유 (CINEDANCE):** 인물이 등장하는 샷은 **그 샷의 첫 프레임부터 인물이 보여야** 한다.
+인물이 나중에 등장하도록 설계하지 않는다. 이 규칙은 나중에 이 콘티가 영상이 될 때
+`first_frame` 슬롯으로 이어진다.
+
+> 장소만 잡는 establishing 샷 자체는 금지가 아니다 — 연출상 필요하면 쓴다.
+> 금지되는 건 **인물이 필요한 샷을 빈 화면으로 열고 뒤늦게 등장시키는 것**이다.
+
+분해 결과를 테이블로 표시 후 **사용자 승인을 받은 뒤** 생성 진행.
+**장소·소품 컬럼을 채운다** — GenConti2Img가 이걸로 배경·소품 레퍼런스를 고른다:
 
 ```
-| # | 샷사이즈 | 인물 | 묘사 | 상태 |
-|---|---|---|---|---|
-| 0010 | EWS | — | 군산 외곽 도로, 새벽 안개 | ⏳ |
-| 0020 | WS | — | 트럭 진입 | ⏳ |
+| # | 샷사이즈 | 인물 | 장소 | 소품 | 묘사 | 상태 |
+|---|---|---|---|---|---|---|
+| 0010 | EWS | — | 외곽도로 | — | 군산 외곽 도로, 새벽 안개 | ⏳ |
+| 0020 | WS | — | 외곽도로 | 트럭 | 트럭 진입 | ⏳ |
+| 0070 | CU | 해수 | 외곽도로 | 권총 | [대사] "..." | ⏳ |
 ...
 ```
 
@@ -232,26 +247,38 @@ URL 형식은 반드시 `<https://...>` 꺾쇠 형식 — VS Code 에디터에�
 
 **sketch 스타일:**
 ```
-Rough storyboard sketch, black and white pencil line art, minimal shading, no color.
+Rough storyboard sketch, black and white pencil line art, minimal shading, monochrome.
 [Shot]: {shot size}, {camera angle}.
 [Scene]: {location and atmosphere from screenplay}.
-[Action]: {key action or moment}.
-{캐릭터가 있을 경우}: [Character]: {캐릭터 외형 묘사 — Character.md 참조 또는 시나리오 기반}
-{Projectprompt.md 있을 경우}: [Project Style]: {Universal Rules + 해당 공간 색감/조명/무드 핵심만 1~2줄}
+[Action]: {key action or moment — as an action STATE, not the wind-up}.
+{캐릭터가 있을 경우}: [Character]: {캐릭터 외형 묘사 — Character.md 앵커 참조}
+{Projectprompt.md 있을 경우}: [Project Style]: {스타일 앵커 — Projectprompt에서 가져옴}
 Animated film storyboard pre-visualization, clear composition, rough and fast sketch style.
-No text, no subtitles, no watermarks.
+Rule of thirds. Exactly {N} people in frame{, exactly one 소품}.
+Clean drawing with unmarked surfaces, no subtitles, no watermarks.
 ```
 
 **cinematic 스타일:**
 ```
-Pixar/Disney quality 3D CG animation, cinematic 16:9 still frame.
+{Projectprompt의 스타일 앵커 — 없으면 "Pixar/Disney quality 3D CG animation, cinematic still frame"}.
 [Shot]: {shot size}, {camera angle}.
 [Scene]: {location and atmosphere from screenplay}.
-[Action]: {key action or moment, character poses and expressions}.
-{캐릭터가 있을 경우}: [Character]: {캐릭터 외형 묘사 — Character.md 참조 또는 시나리오 기반}
-{Projectprompt.md 있을 경우}: [Project Style]: {Universal Rules + 해당 공간 색감/조명/무드 핵심만 1~2줄}
-Cinematic lighting, film grain, no text, no subtitles, no watermarks.
+[Action]: {key action or moment — as an action STATE; expressions as observable muscle work}.
+{캐릭터가 있을 경우}: [Character]: {캐릭터 외형 묘사 — Character.md 앵커 참조}
+Cinematic lighting with a named key direction and falloff.
+Rule of thirds. Exactly {N} people in frame{, exactly one 소품}.
+Clean plate with unmarked surfaces, no subtitles, no watermarks.
 ```
+
+**프롬프트 규칙 (Lira / Acting):**
+- 스타일 첫 줄은 **Projectprompt.md에서** 가져온다. 템플릿에 박아두면 한 줄 고칠 때 전 컷을 다시 만져야 한다.
+- 화면비는 **CLI 파라미터**로 넘긴다 — `cinematic 16:9 still frame`처럼 프롬프트 텍스트에 쓰지 않는다.
+- `character reference sheet` / `painterly` 금지 (일러스트 드리프트 트리거).
+- 표정은 감정어가 아니라 **근육의 일**로. 동작은 **전환이 아니라 상태**로
+  (`가방에서 꺼내 치켜든다` ✗ → `던지는 중, 팔이 뻗어 있다` ✓).
+- 원하는 상태를 먼저 쓰고 금지는 그 옆에 국소로 붙인다. `no color` 대신 `monochrome`처럼
+  **긍정으로 표현할 수 있으면 긍정으로** 쓴다.
+- 인원수·소품 개수를 못박는다.
 
 ### 생성 명령 (gpt_image_2)
 
