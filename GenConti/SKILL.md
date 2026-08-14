@@ -21,6 +21,9 @@ PDF 시나리오 → 샷 분해 → 러프 콘티 이미지 배치 생성 스킬
 
 프롬프트를 쓰기 전에 `~/.claude/skills/Lira/SKILL.md`를 Read한다.
 표정·동작을 쓸 때는 `~/.claude/skills/Acting/SKILL.md`.
+
+> 두 파일은 저장소에 없다 (힉스필드 배포본, 별도 설치). 없으면 `~/.claude/CLAUDE.md`의
+> **프롬프트 규칙 10개**를 근거로 진행한다 — 중단하지 않는다.
 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 
 ## Step 0 — config.md 읽기

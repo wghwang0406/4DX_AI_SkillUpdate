@@ -21,6 +21,13 @@ GenSetup → GenConti → GenImg2Img → GenConti2Img → GenVideo
 | `Lira` | 이미지 프롬프트 4-D + 모델 라우팅 + 시트/장소/소품/편집 템플릿 | GenSetup, GenConti2Img, GenConti, GenT2I, GenImg2Img |
 | `Acting` | 캐릭터 연기 — 마스터 프로필, eye life, states not transitions | GenSetup, GenVideo |
 
+> ⚠️ **이 세 개는 저장소에 포함돼 있지 않다.** 힉스필드 배포본이라 각자 구해서
+> `~/.claude/skills/{Cinedance,Lira,Acting}/SKILL.md` 에 놓아야 한다.
+>
+> 없어도 Gen\* 스킬은 **동작한다.** 다만 프롬프트를 쓸 때 참조할 원문이 없어
+> 품질이 떨어진다 — 에러가 안 나는 종류의 저하라 알아채기 어렵다.
+> 아래 "프롬프트 규칙" 10개 항목이 원문에서 뽑은 요약이니 최소한의 대체는 된다.
+
 ---
 
 ## 공통 규칙

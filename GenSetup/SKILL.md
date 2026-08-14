@@ -23,9 +23,12 @@ allowed-tools: Bash, Read, Write, Skill
 
 | 무엇을 쓸 때 | 읽을 파일 |
 |---|---|
-| 에셋 시트 프롬프트 (인물·배경·소품) | `~/.claude/skills/Lira/SKILL.md` |
-| Sceneprompt / Shotprompt 초안 | `~/.claude/skills/Cinedance/SKILL.md` |
-| Character.md 연기 마스터 프로필·Voice | `~/.claude/skills/Acting/SKILL.md` |
+| 에셋 시트 프롬프트 (인물·배경·소품) | `~/.claude/skills/Lira/SKILL.md` **(별도 설치)** |
+| Sceneprompt / Shotprompt 초안 | `~/.claude/skills/Cinedance/SKILL.md` **(별도 설치)** |
+| Character.md 연기 마스터 프로필·Voice | `~/.claude/skills/Acting/SKILL.md` **(별도 설치)** |
+
+> 세 파일은 저장소에 없다 (힉스필드 배포본). 없으면 `~/.claude/CLAUDE.md`의
+> **프롬프트 규칙 10개**를 근거로 진행한다 — 중단하지 않는다.
 
 `~/.claude/CLAUDE.md`의 **프롬프트 규칙 10개**는 항상 적용된다.
 

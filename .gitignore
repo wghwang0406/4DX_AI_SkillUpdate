@@ -1,0 +1,12 @@
+# 힉스필드 배포본(원문 규격 스킬) — 제3자 저작물이라 이 저장소에 올리지 않는다.
+# 로컬에는 그대로 두고 쓴다. 설치 방법은 README.md 참고.
+Acting/
+Cinedance/
+Lira/
+
+# 파이썬
+__pycache__/
+*.pyc
+
+# 스킬 매니저 캐시
+.skill-manager-cache/
